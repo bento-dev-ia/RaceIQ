@@ -2968,5 +2968,18 @@
   "recording_processing_failed": "처리 실패: {error}",
   "recording_processing_refresh": "상태 새로 고침",
   "opponent_recording_failed": "상대 차량 기록 실패: {error}",
-  "opponent_recording_dismiss": "닫기"
+  "opponent_recording_dismiss": "닫기",
+  "race_engineer_title": "레이스 엔지니어 (음성)",
+  "race_engineer_desc": "주행 중 브라질 포르투갈어 음성 코칭: 다음 코너, 기어, 브레이크 포인트와 한 가지 팁을 최고 구간 기록을 바탕으로 알려줍니다. 현재는 Assetto Corsa Competizione 전용입니다.",
+  "race_engineer_enable": "음성 엔지니어",
+  "race_engineer_hotkey_hint": "단축키: RaceIQ에 포커스가 있을 때 Ctrl+Shift+E. 게임 중 전환하려면 휴대폰의 RaceIQ를 사용하세요.",
+  "race_engineer_bots": "다른 차량에게 배우기 (AI 100%)",
+  "race_engineer_bots_desc": "봇이 더 빠른 구간에서는 봇의 속도와 브레이크 포인트를 사용합니다. ACC는 위치만 제공하므로 기어와 브레이크 압력은 계속 내 랩에서 가져옵니다.",
+  "race_engineer_listen_here": "이 기기에서 말하기",
+  "race_engineer_voice": "음성",
+  "race_engineer_voice_default": "자동 (최적의 pt-BR 음성)",
+  "race_engineer_test": "음성 테스트",
+  "race_engineer_toggle_on": "엔지니어 켜기",
+  "race_engineer_toggle_off": "엔지니어 끄기",
+  "race_engineer_short": "엔지니어"
 }

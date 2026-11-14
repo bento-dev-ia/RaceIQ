@@ -2967,5 +2967,18 @@
   "recording_processing_failed": "Помилка обробки: {error}",
   "recording_processing_refresh": "Оновити стан",
   "opponent_recording_failed": "Не вдалося записати суперника: {error}",
-  "opponent_recording_dismiss": "Закрити"
+  "opponent_recording_dismiss": "Закрити",
+  "race_engineer_title": "Гоночний інженер (голос)",
+  "race_engineer_desc": "Голосові підказки бразильською португальською під час їзди: наступний поворот, передача, точка гальмування й одна порада на основі ваших найкращих ділянок. Поки що лише в Assetto Corsa Competizione.",
+  "race_engineer_enable": "Голосовий інженер",
+  "race_engineer_hotkey_hint": "Сполучення клавіш: Ctrl+Shift+E, коли RaceIQ у фокусі. Щоб перемикати в грі, використовуйте RaceIQ на телефоні.",
+  "race_engineer_bots": "Вчитися в інших авто (ШІ на 100%)",
+  "race_engineer_bots_desc": "Використовує швидкість і точки гальмування ботів там, де вони швидші за вас. ACC передає лише їхнє положення, тож передача й сила гальмування беруться з ваших кіл.",
+  "race_engineer_listen_here": "Говорити на цьому пристрої",
+  "race_engineer_voice": "Голос",
+  "race_engineer_voice_default": "Автоматично (найкращий голос pt-BR)",
+  "race_engineer_test": "Перевірити голос",
+  "race_engineer_toggle_on": "Увімкнути інженера",
+  "race_engineer_toggle_off": "Вимкнути інженера",
+  "race_engineer_short": "Інженер"
 }

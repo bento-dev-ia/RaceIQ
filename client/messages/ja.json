@@ -2967,5 +2967,18 @@
   "recording_processing_failed": "処理に失敗しました: {error}",
   "recording_processing_refresh": "状態を更新",
   "opponent_recording_failed": "対戦相手の記録に失敗しました: {error}",
-  "opponent_recording_dismiss": "閉じる"
+  "opponent_recording_dismiss": "閉じる",
+  "race_engineer_title": "レースエンジニア（音声）",
+  "race_engineer_desc": "走行中にブラジルポルトガル語で音声アドバイス：次のコーナー、ギア、ブレーキポイント、ひとつのヒントを、あなたのベスト区間をもとに伝えます。現在は Assetto Corsa Competizione のみ対応。",
+  "race_engineer_enable": "音声エンジニア",
+  "race_engineer_hotkey_hint": "ショートカット：RaceIQ にフォーカスがあるとき Ctrl+Shift+E。ゲーム中に切り替えるにはスマホの RaceIQ を使用してください。",
+  "race_engineer_bots": "他の車から学ぶ（AI 100%）",
+  "race_engineer_bots_desc": "ボットの方が速い区間では、その速度とブレーキポイントを使います。ACC は位置しか公開しないため、ギアとブレーキ圧はあなたの周回から取得します。",
+  "race_engineer_listen_here": "このデバイスで再生",
+  "race_engineer_voice": "音声",
+  "race_engineer_voice_default": "自動（最適な pt-BR 音声）",
+  "race_engineer_test": "音声をテスト",
+  "race_engineer_toggle_on": "エンジニアをオン",
+  "race_engineer_toggle_off": "エンジニアをオフ",
+  "race_engineer_short": "エンジニア"
 }

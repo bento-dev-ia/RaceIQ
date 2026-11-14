@@ -2971,5 +2971,18 @@
   "recording_processing_failed": "Verarbeitung fehlgeschlagen: {error}",
   "recording_processing_refresh": "Status aktualisieren",
   "opponent_recording_failed": "Aufzeichnung des Gegners fehlgeschlagen: {error}",
-  "opponent_recording_dismiss": "Schließen"
+  "opponent_recording_dismiss": "Schließen",
+  "race_engineer_title": "Renningenieur (Sprache)",
+  "race_engineer_desc": "Gesprochene Tipps auf brasilianischem Portugiesisch während der Fahrt: nächste Kurve, Gang, Bremspunkt und ein Tipp, basierend auf deinen besten Abschnitten. Vorerst nur in Assetto Corsa Competizione.",
+  "race_engineer_enable": "Sprach-Renningenieur",
+  "race_engineer_hotkey_hint": "Tastenkürzel: Strg+Umschalt+E, wenn RaceIQ den Fokus hat. Zum Umschalten im Spiel RaceIQ auf dem Handy verwenden.",
+  "race_engineer_bots": "Von anderen Autos lernen (KI auf 100 %)",
+  "race_engineer_bots_desc": "Nutzt Geschwindigkeit und Bremspunkte der Bots, wo sie schneller sind als du. ACC liefert nur ihre Position, Gang und Bremsdruck kommen weiter aus deinen Runden.",
+  "race_engineer_listen_here": "Auf diesem Gerät sprechen",
+  "race_engineer_voice": "Stimme",
+  "race_engineer_voice_default": "Automatisch (beste pt-BR-Stimme)",
+  "race_engineer_test": "Stimme testen",
+  "race_engineer_toggle_on": "Ingenieur einschalten",
+  "race_engineer_toggle_off": "Ingenieur ausschalten",
+  "race_engineer_short": "Ingenieur"
 }

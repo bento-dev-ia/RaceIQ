@@ -35,3 +35,5 @@ apps/backend/test/runtime/http-access.test.ts
 apps/backend/test/ai/chat/chat-vision.test.ts
 apps/backend/test/runtime/split-startup.test.ts
 apps/backend/test/runtime/desktop-host.test.ts
+apps/backend/test/race-engineer/bot-recorder.test.ts
+apps/backend/test/race-engineer/race-engineer.test.ts

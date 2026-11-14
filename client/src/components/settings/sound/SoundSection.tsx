@@ -6,6 +6,7 @@ import { Switch } from "@/components/ui/switch";
 import { getSoundEnabled, getSoundType, getSoundUrl, getSoundVolume, SOUND_PRESETS, setSoundEnabled, setSoundType, setSoundUrl, setSoundVolume } from "@/lib/settings-storage";
 import { m } from "@/paraglide/messages";
 import { playBlip, preloadSound, removeCachedSound } from "@/lib/sound";
+import { RaceEngineerSettings } from "./RaceEngineerSettings";
 
 export function SoundSection() {
   const [soundEnabled, setSoundEnabledState] = useState(() => getSoundEnabled());
@@ -98,6 +99,7 @@ export function SoundSection() {
           {m.settings_sound_play()}
         </Button>
       </div>
+      <RaceEngineerSettings />
     </section>
   );
 }

@@ -10,6 +10,7 @@ import {
   Gamepad2,
   History,
   GitCompareArrows,
+  Headset,
   House,
   LayoutDashboard,
   type LucideIcon,
@@ -31,6 +32,7 @@ import { m } from "@/paraglide/messages";
 import { type GameRouteFeature, supportsGameFeature } from "../lib/game-routes";
 import { isGameContextPath, replaceGameRoutePrefix } from "../lib/sidebar-navigation";
 import { ConnectionStatus } from "./ConnectionStatus";
+import { useRaceEngineerToggle } from "./RaceEngineerToggle";
 
 export interface AppSidebarProps {
   collapsed: boolean;
@@ -165,6 +167,7 @@ export function AppSidebar({
   const selectItems = useMemo(() => visibleGames.map((game) => ({ value: game.id, label: game.displayName })), [visibleGames]);
   const visibleFeatures = activeGame ? FEATURE_LINKS.filter((feature) => !feature.feature || supportsGameFeature(activeGame.routePrefix, feature.feature)) : [];
   const showCollapsed = !mobile && collapsed;
+  const raceEngineer = useRaceEngineerToggle();
 
   useEffect(
     () => () => {
@@ -329,6 +332,17 @@ export function AppSidebar({
               <span className={showCollapsed ? "sr-only" : "truncate"}>{updateLabel}</span>
             </SidebarAction>
           )}
+          <SidebarAction
+            collapsed={showCollapsed}
+            label={`${raceEngineer.enabled ? m.race_engineer_toggle_off() : m.race_engineer_toggle_on()} (Ctrl+Shift+E)`}
+            onClick={raceEngineer.toggle}
+            className={raceEngineer.enabled ? "text-app-accent" : undefined}
+          >
+            <Headset className="size-4" />
+            <span className={showCollapsed ? "sr-only" : "truncate"}>
+              {m.race_engineer_short()} · {raceEngineer.enabled ? m.common_on() : m.common_off()}
+            </span>
+          </SidebarAction>
           <SidebarAction collapsed={showCollapsed} label={m.nav_settings()} onClick={handleSettings}>
             <Settings2 className="size-4" />
             <span className={showCollapsed ? "sr-only" : "truncate"}>{m.nav_settings()}</span>

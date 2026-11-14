@@ -2967,5 +2967,18 @@
   "recording_processing_failed": "Verwerking mislukt: {error}",
   "recording_processing_refresh": "Status bijwerken",
   "opponent_recording_failed": "Opname van tegenstander mislukt: {error}",
-  "opponent_recording_dismiss": "Sluiten"
+  "opponent_recording_dismiss": "Sluiten",
+  "race_engineer_title": "Race-engineer (spraak)",
+  "race_engineer_desc": "Gesproken tips in Braziliaans Portugees tijdens het rijden: volgende bocht, versnelling, rempunt en één tip, op basis van je beste stukken. Voorlopig alleen in Assetto Corsa Competizione.",
+  "race_engineer_enable": "Spraak-engineer",
+  "race_engineer_hotkey_hint": "Sneltoets: Ctrl+Shift+E wanneer RaceIQ focus heeft. Om in-game te schakelen, gebruik RaceIQ op je telefoon.",
+  "race_engineer_bots": "Leren van andere auto's (AI op 100%)",
+  "race_engineer_bots_desc": "Gebruikt snelheid en rempunten van bots waar ze sneller zijn dan jij. ACC geeft alleen hun positie, dus versnelling en remdruk komen nog uit jouw ronden.",
+  "race_engineer_listen_here": "Spreek op dit apparaat",
+  "race_engineer_voice": "Stem",
+  "race_engineer_voice_default": "Automatisch (beste pt-BR-stem)",
+  "race_engineer_test": "Stem testen",
+  "race_engineer_toggle_on": "Engineer aanzetten",
+  "race_engineer_toggle_off": "Engineer uitzetten",
+  "race_engineer_short": "Engineer"
 }

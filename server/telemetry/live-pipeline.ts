@@ -828,6 +828,7 @@ export class LiveTelemetryPipeline {
       receivedAtMs: Date.now(),
     });
     this.ws.publishTelemetry({ packet, sectors, pit, liveIssues, projection });
+    notifyLiveFrameListeners(packet, detector.session);
 
     if (!this._skipDevState && this.ws.wantsDevState) {
       this.ws.broadcastDevState({
@@ -985,6 +986,41 @@ export class LiveTelemetryPipeline {
     if (this.recorder instanceof DirectSessionRecorderAdapter) {
       await this.recorder.ready;
       await this.recorder.drainWrites();
+    }
+  }
+}
+
+/**
+ * Synchronous per-frame observers (e.g. the voice race engineer). Called after
+ * the packet is normalized and published; listeners must be cheap and must not
+ * mutate the packet. Errors are contained so a listener can't stall capture.
+ */
+export interface LiveFrameSession {
+  readonly sessionId: number;
+  readonly carId: string;
+  readonly trackId: string;
+  readonly gameId: GameId;
+  readonly bestLapTime: number;
+}
+export type LiveFrameListener = (packet: Readonly<TelemetryPacket>, session: LiveFrameSession | null) => void;
+const liveFrameListeners = new Set<LiveFrameListener>();
+let liveFrameListenerErrorLogged = false;
+
+export function subscribeLiveFrames(listener: LiveFrameListener): () => void {
+  liveFrameListeners.add(listener);
+  return () => liveFrameListeners.delete(listener);
+}
+
+function notifyLiveFrameListeners(packet: TelemetryPacket, session: LiveFrameSession | null): void {
+  if (liveFrameListeners.size === 0) return;
+  for (const listener of liveFrameListeners) {
+    try {
+      listener(packet, session);
+    } catch (error) {
+      if (!liveFrameListenerErrorLogged) {
+        liveFrameListenerErrorLogged = true;
+        console.error("[LiveFrames] listener failed:", error);
+      }
     }
   }
 }

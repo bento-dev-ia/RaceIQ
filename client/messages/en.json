@@ -2971,5 +2971,18 @@
   "recording_processing_failed": "Processing failed: {error}",
   "recording_processing_refresh": "Refresh status",
   "opponent_recording_failed": "Opponent recording failed: {error}",
-  "opponent_recording_dismiss": "Dismiss"
+  "opponent_recording_dismiss": "Dismiss",
+  "race_engineer_title": "Race engineer (voice)",
+  "race_engineer_desc": "Live spoken coaching in Brazilian Portuguese while you drive: next corner, gear, brake point and one tip, based on your best sections. Assetto Corsa Competizione only for now.",
+  "race_engineer_enable": "Voice engineer",
+  "race_engineer_hotkey_hint": "Shortcut: Ctrl+Shift+E while RaceIQ is focused. To switch it in-game, use RaceIQ on your phone.",
+  "race_engineer_bots": "Learn from other cars (AI at 100%)",
+  "race_engineer_bots_desc": "Uses the bots' speed and braking points where they are faster than you. ACC only exposes their positions, so gear and pedal pressure still come from your laps.",
+  "race_engineer_listen_here": "Speak on this device",
+  "race_engineer_voice": "Voice",
+  "race_engineer_voice_default": "Automatic (best pt-BR voice)",
+  "race_engineer_test": "Test voice",
+  "race_engineer_toggle_on": "Turn engineer on",
+  "race_engineer_toggle_off": "Turn engineer off",
+  "race_engineer_short": "Engineer"
 }

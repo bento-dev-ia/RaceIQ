@@ -2967,5 +2967,18 @@
   "recording_processing_failed": "处理失败：{error}",
   "recording_processing_refresh": "刷新状态",
   "opponent_recording_failed": "对手录制失败：{error}",
-  "opponent_recording_dismiss": "关闭"
+  "opponent_recording_dismiss": "关闭",
+  "race_engineer_title": "赛车工程师（语音）",
+  "race_engineer_desc": "驾驶时用巴西葡萄牙语语音指导：下一个弯道、挡位、刹车点和一条建议，基于你的最佳路段。目前仅支持 Assetto Corsa Competizione。",
+  "race_engineer_enable": "语音工程师",
+  "race_engineer_hotkey_hint": "快捷键：RaceIQ 处于焦点时按 Ctrl+Shift+E。若要在游戏中切换，请在手机上使用 RaceIQ。",
+  "race_engineer_bots": "向其他车辆学习（AI 100%）",
+  "race_engineer_bots_desc": "在机器人比你快的地方使用其速度和刹车点。ACC 只提供它们的位置，因此挡位和刹车力度仍来自你的圈数。",
+  "race_engineer_listen_here": "在此设备上播报",
+  "race_engineer_voice": "语音",
+  "race_engineer_voice_default": "自动（最佳 pt-BR 语音）",
+  "race_engineer_test": "测试语音",
+  "race_engineer_toggle_on": "开启工程师",
+  "race_engineer_toggle_off": "关闭工程师",
+  "race_engineer_short": "工程师"
 }

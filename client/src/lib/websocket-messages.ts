@@ -2,7 +2,12 @@ import { isDevTelemetryPacketMessageV1, isDevTelemetrySubscriptionMessageV1, isL
 import { devTelemetryStore } from "../stores/dev-telemetry";
 import { telemetryStore } from "../stores/telemetry";
 import { decodeLmuPacket, isLmuLiveContextWire } from "@raceiq/shared/telemetry/lmu-context";
+import { isRaceEngineerCallout, speakRaceEngineer } from "./race-engineer-voice";
 export function handleWebSocketMessage(data: unknown): boolean {
+  if (isRaceEngineerCallout(data)) {
+    speakRaceEngineer(data.text);
+    return false;
+  }
   if (data !== null && typeof data === "object" && "type" in data && data.type === "opponent-recording-failed") {
     const error = "error" in data && typeof data.error === "string" ? data.error : "Unknown error";
     telemetryStore.actions.setOpponentRecordingError(error);

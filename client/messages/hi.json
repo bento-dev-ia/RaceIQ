@@ -2968,5 +2968,18 @@
   "recording_processing_failed": "प्रोसेसिंग विफल: {error}",
   "recording_processing_refresh": "स्थिति रीफ़्रेश करें",
   "opponent_recording_failed": "प्रतिद्वंद्वी की रिकॉर्डिंग विफल: {error}",
-  "opponent_recording_dismiss": "बंद करें"
+  "opponent_recording_dismiss": "बंद करें",
+  "race_engineer_title": "रेस इंजीनियर (आवाज़)",
+  "race_engineer_desc": "ड्राइव करते समय ब्राज़ीलियाई पुर्तगाली में बोली गई सलाह: अगला मोड़, गियर, ब्रेक पॉइंट और एक सुझाव, आपके सर्वश्रेष्ठ हिस्सों के आधार पर। अभी केवल Assetto Corsa Competizione में।",
+  "race_engineer_enable": "आवाज़ इंजीनियर",
+  "race_engineer_hotkey_hint": "शॉर्टकट: RaceIQ पर फ़ोकस होने पर Ctrl+Shift+E। गेम के दौरान बदलने के लिए फ़ोन पर RaceIQ इस्तेमाल करें।",
+  "race_engineer_bots": "दूसरी कारों से सीखें (AI 100%)",
+  "race_engineer_bots_desc": "जहाँ बॉट आपसे तेज़ हैं वहाँ उनकी गति और ब्रेक पॉइंट इस्तेमाल करता है। ACC केवल उनकी स्थिति देता है, इसलिए गियर और ब्रेक दबाव आपकी लैप्स से ही आते हैं।",
+  "race_engineer_listen_here": "इस डिवाइस पर बोलें",
+  "race_engineer_voice": "आवाज़",
+  "race_engineer_voice_default": "स्वचालित (सबसे अच्छी pt-BR आवाज़)",
+  "race_engineer_test": "आवाज़ जाँचें",
+  "race_engineer_toggle_on": "इंजीनियर चालू करें",
+  "race_engineer_toggle_off": "इंजीनियर बंद करें",
+  "race_engineer_short": "इंजीनियर"
 }

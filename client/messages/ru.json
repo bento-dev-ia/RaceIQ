@@ -2967,5 +2967,18 @@
   "recording_processing_failed": "Ошибка обработки: {error}",
   "recording_processing_refresh": "Обновить статус",
   "opponent_recording_failed": "Не удалось записать соперника: {error}",
-  "opponent_recording_dismiss": "Закрыть"
+  "opponent_recording_dismiss": "Закрыть",
+  "race_engineer_title": "Гоночный инженер (голос)",
+  "race_engineer_desc": "Голосовые подсказки на бразильском португальском во время езды: следующий поворот, передача, точка торможения и один совет на основе ваших лучших участков. Пока только в Assetto Corsa Competizione.",
+  "race_engineer_enable": "Голосовой инженер",
+  "race_engineer_hotkey_hint": "Сочетание клавиш: Ctrl+Shift+E, когда RaceIQ в фокусе. Чтобы переключать в игре, используйте RaceIQ на телефоне.",
+  "race_engineer_bots": "Учиться у других машин (ИИ на 100%)",
+  "race_engineer_bots_desc": "Использует скорость и точки торможения ботов там, где они быстрее вас. ACC передаёт только их положение, поэтому передача и усилие торможения берутся из ваших кругов.",
+  "race_engineer_listen_here": "Говорить на этом устройстве",
+  "race_engineer_voice": "Голос",
+  "race_engineer_voice_default": "Автоматически (лучший голос pt-BR)",
+  "race_engineer_test": "Проверить голос",
+  "race_engineer_toggle_on": "Включить инженера",
+  "race_engineer_toggle_off": "Выключить инженера",
+  "race_engineer_short": "Инженер"
 }

@@ -2967,5 +2967,18 @@
   "recording_processing_failed": "Falha no processamento: {error}",
   "recording_processing_refresh": "Atualizar estado",
   "opponent_recording_failed": "Falha na gravação do adversário: {error}",
-  "opponent_recording_dismiss": "Fechar"
+  "opponent_recording_dismiss": "Fechar",
+  "race_engineer_title": "Engenheiro de corrida (voz)",
+  "race_engineer_desc": "Indicações faladas em português do Brasil enquanto conduz: próxima curva, mudança, ponto de travagem e uma dica, com base nos seus melhores troços. Por agora apenas no Assetto Corsa Competizione.",
+  "race_engineer_enable": "Engenheiro por voz",
+  "race_engineer_hotkey_hint": "Atalho: Ctrl+Shift+E com o RaceIQ em foco. Para alternar durante o jogo, use o RaceIQ no telemóvel.",
+  "race_engineer_bots": "Aprender com outros carros (IA a 100%)",
+  "race_engineer_bots_desc": "Usa a velocidade e os pontos de travagem dos bots onde forem mais rápidos. O ACC só expõe a posição deles, por isso a mudança e a pressão do travão continuam a vir das suas voltas.",
+  "race_engineer_listen_here": "Falar neste dispositivo",
+  "race_engineer_voice": "Voz",
+  "race_engineer_voice_default": "Automática (melhor voz pt-BR)",
+  "race_engineer_test": "Testar voz",
+  "race_engineer_toggle_on": "Ligar engenheiro",
+  "race_engineer_toggle_off": "Desligar engenheiro",
+  "race_engineer_short": "Engenheiro"
 }

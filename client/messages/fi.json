@@ -2968,5 +2968,18 @@
   "recording_processing_failed": "Käsittely epäonnistui: {error}",
   "recording_processing_refresh": "Päivitä tila",
   "opponent_recording_failed": "Vastustajan tallennus epäonnistui: {error}",
-  "opponent_recording_dismiss": "Sulje"
+  "opponent_recording_dismiss": "Sulje",
+  "race_engineer_title": "Kilpainsinööri (ääni)",
+  "race_engineer_desc": "Puhuttuja vinkkejä Brasilian portugaliksi ajon aikana: seuraava mutka, vaihde, jarrutuskohta ja yksi vinkki parhaiden osuuksiesi perusteella. Toistaiseksi vain Assetto Corsa Competizionessa.",
+  "race_engineer_enable": "Ääni-insinööri",
+  "race_engineer_hotkey_hint": "Pikanäppäin: Ctrl+Shift+E, kun RaceIQ on aktiivinen. Vaihda pelin aikana puhelimen RaceIQ:lla.",
+  "race_engineer_bots": "Opi muista autoista (tekoäly 100 %)",
+  "race_engineer_bots_desc": "Käyttää bottien nopeutta ja jarrutuskohtia siellä, missä ne ovat sinua nopeampia. ACC antaa vain niiden sijainnin, joten vaihde ja jarrupaine tulevat edelleen omista kierroksistasi.",
+  "race_engineer_listen_here": "Puhu tällä laitteella",
+  "race_engineer_voice": "Ääni",
+  "race_engineer_voice_default": "Automaattinen (paras pt-BR-ääni)",
+  "race_engineer_test": "Testaa ääni",
+  "race_engineer_toggle_on": "Kytke insinööri päälle",
+  "race_engineer_toggle_off": "Kytke insinööri pois",
+  "race_engineer_short": "Insinööri"
 }
