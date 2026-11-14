@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { analyzeLap } from "../../src/race-engineer/corner-analysis";
 import { RaceEngineerCoach, type CoachFrame } from "../../src/race-engineer/coach";
 import { diagnoseCorner } from "../../src/race-engineer/diagnosis";
-import { formatDelta, formatLapTime, preCornerPhrase, spokenCornerName } from "../../src/race-engineer/phrases-pt-br";
+import { formatDelta, formatLapTime, postCornerPhrase, preCornerPhrase, spokenCornerName } from "../../src/race-engineer/phrases-pt-br";
 import { CornerReferenceSet } from "../../src/race-engineer/reference";
 import type { EngineerCorner, EngineerSample } from "../../src/race-engineer/types";
 
@@ -114,6 +114,17 @@ describe("race engineer phrases", () => {
     expect(spokenCornerName("Eau Rouge", [3], 3)).toBe("Eau Rouge");
   });
 
+  test("flags too much / too little steering only when it cost speed", () => {
+    const set = new CornerReferenceSet(CORNERS);
+    set.addDriverLap(makeLap());
+    const ref = set.get("t3")!;
+    expect(ref.peakSteer).toBeGreaterThan(0.05);
+    const slow = { ...ref, minKmh: ref.minKmh - 12 };
+    expect(diagnoseCorner({ ...slow, peakSteer: ref.peakSteer * 1.5 }, ref).map((i) => i.kind)).toContain("steer-too-much");
+    expect(diagnoseCorner({ ...slow, peakSteer: ref.peakSteer * 0.5 }, ref).map((i) => i.kind)).toContain("steer-too-little");
+    expect(diagnoseCorner({ ...ref, peakSteer: ref.peakSteer * 1.5 }, ref).map((i) => i.kind)).not.toContain("steer-too-much");
+  });
+
   test("pre-corner phrase anchors gear + brake marker and gives one tip", () => {
     const ref = new CornerReferenceSet(CORNERS);
     ref.addDriverLap(makeLap());
@@ -121,6 +132,9 @@ describe("race engineer phrases", () => {
       .toBe("La Source, terceira, freia nos 100 metros. Solta o freio devagar até o ápice.");
     expect(preCornerPhrase("La Source", ref.get("t3")!, { kind: "brake-early", brakeShiftM: 22 }))
       .toBe("La Source, terceira, freia nos 100 metros. 20 metros mais tarde.");
+    expect(preCornerPhrase("La Source", ref.get("t3")!, { kind: "turn-in-early", turnInShiftM: 18 }))
+      .toBe("La Source, terceira, freia nos 100 metros. Espera, vira uns 20 metros mais tarde.");
+    expect(postCornerPhrase(0.34, { kind: "brake-early" }, { kind: "turn-in-late" })).toBe("Perdeu 3 décimos, freou cedo e virou tarde.");
   });
 });
 
@@ -147,10 +161,14 @@ describe("race engineer coach", () => {
     expect(said[0].text).toContain("sem referência");
     expect(said.some((s) => s.text.startsWith("Referência pronta"))).toBe(true);
     const post = said.find((s) => s.kind === "post-corner");
-    expect(post?.text).toMatch(/^Perdeu .*freou cedo\.$/);
-    const pre = said.find((s) => s.kind === "pre-corner");
+    // Up to two causes, costliest first.
+    expect(post?.text).toMatch(/^Perdeu [^,]+, freou cedo( e [^.]+)?\.$/);
+    const pre = said.find((s) => s.kind === "pre-corner" && s.text.includes("mais tarde"));
     expect(pre?.text).toContain("Curva 2");
     expect(pre?.text).toContain("30 metros mais tarde");
+    // Before any focus exists, the corners are briefed with gear, speed and brake point.
+    const briefing = said.find((s) => s.kind === "pre-corner" && !s.text.includes("mais tarde"));
+    expect(briefing?.text).toMatch(/^.+, (primeira|segunda|terceira|quarta|quinta|sexta), \d+(, freia nos \d+ metros)?\.$/);
     expect(said.some((s) => s.kind === "lap-summary")).toBe(true);
     // Never between (reference brake point - 150 m) and the reference throttle pick-up.
     for (const s of said) {

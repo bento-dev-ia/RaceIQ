@@ -12,6 +12,9 @@ import { readAccGraphics, readAccTrackLength } from "./acc-graphics";
 import { spokenCornerName } from "./phrases-pt-br";
 import { RaceEngineerSession } from "./session";
 import { resolveTrackLengthM } from "./track-length";
+import { loadEngineerLaps, saveEngineerLap } from "./lap-store";
+import { prewarmSpeech, setEngineerVoiceId } from "./tts";
+import { guideForTrack, guideForTurns } from "./track-knowledge";
 import type { EngineerCallout, EngineerCorner, EngineerSample } from "./types";
 
 /** WebSocket message the client speaks. */
@@ -20,7 +23,8 @@ export interface RaceEngineerCalloutMessage extends EngineerCallout {
   at: number;
 }
 
-type EngineerSettings = Pick<AppSettings, "raceEngineerEnabled" | "raceEngineerLearnFromBots">;
+type EngineerSettings = Pick<AppSettings, "raceEngineerEnabled" | "raceEngineerLearnFromBots"> & Partial<Pick<AppSettings, "raceEngineerOverlayScale" | "raceEngineerVoiceId">>;
+let overlayScale = 1;
 
 const SUPPORTED_GAMES: ReadonlySet<GameId> = new Set<GameId>(["acc"]);
 const REFERENCE_LAPS = 10;
@@ -31,6 +35,7 @@ interface Context {
 }
 
 let enabled = false;
+let lastPrewarmKey = "";
 let learnFromBots = false;
 let ctx: Context | null = null;
 let unsubscribe: (() => void) | null = null;
@@ -39,6 +44,8 @@ export function applyRaceEngineerSettings(settings: EngineerSettings): void {
   const wasEnabled = enabled;
   enabled = settings.raceEngineerEnabled;
   learnFromBots = settings.raceEngineerLearnFromBots;
+  overlayScale = settings.raceEngineerOverlayScale ?? overlayScale;
+  setEngineerVoiceId(settings.raceEngineerVoiceId);
   if (enabled !== wasEnabled) {
     ctx = null; // rebuild coach + reference from the DB on the next frame
     console.log(`[RaceEngineer] ${enabled ? "enabled" : "disabled"}`);
@@ -59,10 +66,89 @@ export function stopRaceEngineer(): void {
 function publish(callout: EngineerCallout): void {
   const message: RaceEngineerCalloutMessage = { type: "race-engineer-callout", at: Date.now(), ...callout };
   wsManager.broadcastNotification({ ...message });
+  console.log(`[RaceEngineer] say (${callout.kind}): ${callout.text}`);
+}
+
+/** The overlay polls the ideal inputs; while it does, the reference is kept live even with the voice off. */
+let overlayPolledAtMs = Number.NEGATIVE_INFINITY;
+const OVERLAY_KEEPALIVE_MS = 15_000;
+
+function overlayActive(nowMs = Date.now()): boolean {
+  return nowMs - overlayPolledAtMs < OVERLAY_KEEPALIVE_MS;
+}
+
+export interface RaceEngineerIdealPayload {
+  /** Changes whenever the track/car or the reference changes. */
+  version: string;
+  trackLengthM: number;
+  stepM: number;
+  throttle: number[];
+  brake: number[];
+  steer: number[];
+  speed: number[];
+  /** Reference targets per corner, for the overlay's "next corner" strip. */
+  corners: {
+    name: string;
+    startM: number;
+    brakeStartM: number | null;
+    /** The fixed marker: metres before turn-in where braking starts. */
+    brakeBeforeTurnInM: number | null;
+    turnInM: number;
+    gear: number;
+    minKmh: number;
+    peakBrakePct: number | null;
+    trailBraking: boolean | null;
+  }[];
+}
+
+/**
+ * Ideal (reference) pedal + steering inputs on a distance grid for the
+ * in-game overlay. Returns `{ unchanged: true }` when `knownVersion` matches,
+ * `null` while there is no live ACC session or no reference yet.
+ */
+/** Overlay size from settings (its position is dragged in-game and stored by the overlay). */
+export function getRaceEngineerOverlayPlacement(): { scale: number } {
+  return { scale: overlayScale };
+}
+
+export function getRaceEngineerIdeal(knownVersion: string | null): RaceEngineerIdealPayload | { unchanged: true; version: string } | null {
+  overlayPolledAtMs = Date.now();
+  const engineer = ctx?.session;
+  if (!ctx || !engineer) return null;
+  const reference = engineer.coach.reference;
+  const version = `${ctx.key}|${reference.version}`;
+  if (knownVersion === version) return { unchanged: true, version };
+  const ideal = reference.idealInputs(engineer.trackLengthM);
+  if (!ideal) return null;
+  const round = (values: Float32Array, digits: number): number[] => Array.from(values, (v) => Number(v.toFixed(digits)));
+  return {
+    version,
+    trackLengthM: engineer.trackLengthM,
+    stepM: ideal.stepM,
+    throttle: round(ideal.throttle, 3),
+    brake: round(ideal.brake, 3),
+    steer: round(ideal.steer, 3),
+    speed: round(ideal.speed, 1),
+    corners: engineer.coach.corners.flatMap((corner) => {
+      const ref = reference.get(corner.key);
+      if (!ref) return [];
+      return [{
+        name: corner.spokenName,
+        startM: corner.startM,
+        brakeStartM: ref.brakeStartM,
+        brakeBeforeTurnInM: ref.brakeBeforeTurnInM === null ? null : Math.round(ref.brakeBeforeTurnInM),
+        turnInM: ref.turnInM,
+        gear: ref.gear,
+        minKmh: Math.round(ref.minKmh),
+        peakBrakePct: Number.isFinite(ref.peakBrake) ? Math.round(ref.peakBrake * 100) : null,
+        trailBraking: ref.trailBraking,
+      }];
+    }),
+  };
 }
 
 function onFrame(packet: Readonly<TelemetryPacket>, session: LiveFrameSession | null): void {
-  if (!enabled || !session || !SUPPORTED_GAMES.has(packet.gameId)) return;
+  if (!(enabled || overlayActive()) || !session || !SUPPORTED_GAMES.has(packet.gameId)) return;
   const key = `${session.gameId}|${session.carId}|${session.trackId}`;
   if (ctx?.key !== key) {
     const next: Context = { key };
@@ -80,7 +166,14 @@ function onFrame(packet: Readonly<TelemetryPacket>, session: LiveFrameSession | 
   const nowMs = Date.now();
   const view = readAccGraphics(graphics, engineer.wantsCars(nowMs, learnFromBots));
   const best = session.bestLapTime > 0 ? session.bestLapTime : packet.BestLap;
-  for (const callout of engineer.feed(packet, view, nowMs, best)) publish(callout);
+  const callouts = engineer.feed(packet, view, nowMs, best);
+  if (enabled) for (const callout of callouts) publish(callout);
+  // Refill the natural-voice cache whenever the reference or the focus may have changed.
+  const lapKey = `${packet.LapNumber}|${engineer.coach.reference.version}`;
+  if (enabled && lapKey !== lastPrewarmKey) {
+    lastPrewarmKey = lapKey;
+    prewarmSpeech(engineer.coach.plannedPhrases());
+  }
 }
 
 async function buildSession(session: LiveFrameSession): Promise<RaceEngineerSession | null> {
@@ -92,22 +185,29 @@ async function buildSession(session: LiveFrameSession): Promise<RaceEngineerSess
       .slice(0, REFERENCE_LAPS);
     const laps = metas.length > 0 ? await getLapsByIds(metas.map((m) => m.id)) : [];
     const stored = laps.map((lap) => packetsToSamples(lap.telemetry)).filter((s) => s.length > 50);
+    const storeKey = `${session.gameId}-${session.carId}-${session.trackId}`;
+    const ownLaps = loadEngineerLaps(storeKey);
 
     const staticData = getAccReader()?.getDebugBuffers()?.staticData;
     const splineLength = staticData ? readAccTrackLength(staticData) : 0;
     const trackLengthM = splineLength > 0
       ? splineLength
       : resolveTrackLengthM(session.trackId, session.gameId, [...stored.map((s) => s[s.length - 1].d), totalDist]);
-    const corners = cornersFromSegments(segments, trackLengthM);
+    const trackGuide = guideForTrack(session.trackId);
+    const corners = cornersFromSegments(segments, trackLengthM).map((c) => ({ ...c, guide: guideForTurns(trackGuide, c.turns ?? []) }));
     if (corners.length === 0 || !(trackLengthM > 0)) {
       publish({ kind: "status", priority: 1, text: "Essa pista ainda não tem curvas mapeadas. Engenheiro em espera." });
       return null;
     }
-    const engineer = new RaceEngineerSession(corners, trackLengthM, stored.map((s) => rescale(s, trackLengthM)), (lapTimeS, total) => {
+    // Session laps measure distance by integration, which can be far off (partial or pit laps):
+    // only those that span the whole track are trusted; the engineer's own laps always are.
+    const trusted = stored.filter((s) => Math.abs(s[s.length - 1].d / trackLengthM - 1) <= 0.03).map((s) => rescale(s, trackLengthM));
+    const engineer = new RaceEngineerSession(corners, trackLengthM, [...ownLaps, ...trusted], (lapTimeS, total) => {
       console.log(`[RaceEngineer] bot lap learned (${lapTimeS.toFixed(3)}s), total ${total}`);
       if (total === 1) publish({ kind: "status", priority: 1, text: "Volta do bot gravada. Vou usar como referência onde ele for mais rápido." });
     });
-    console.log(`[RaceEngineer] ${session.trackId}: ${corners.length} corners, ${engineer.coach.reference.lapCount} reference laps, ${trackLengthM.toFixed(0)} m`);
+    engineer.coach.onReferenceLap = (samples, lapTimeS) => saveEngineerLap(storeKey, samples, lapTimeS);
+    console.log(`[RaceEngineer] ${session.trackId}: ${corners.length} corners, ${engineer.coach.reference.lapCount} reference laps (${ownLaps.length} own, ${trusted.length} of ${stored.length} session laps), ${trackLengthM.toFixed(0)} m`);
     return engineer;
   } catch (error) {
     console.error("[RaceEngineer] failed to build context:", error);
@@ -143,11 +243,13 @@ export function cornersFromSegments(segments: readonly NamedSegment[], trackLeng
     if (segment.type !== "corner") return;
     cornerNumber++;
     if (!(segment.endFrac > segment.startFrac)) return; // wraps the line: skip
+    const turns = turnNumbers(segment);
     corners.push({
       key: `${index}`,
-      spokenName: spokenCornerName(segment.name, turnNumbers(segment), cornerNumber),
+      spokenName: spokenCornerName(segment.name, turns, cornerNumber),
       startM: segment.startFrac * trackLengthM,
       endM: segment.endFrac * trackLengthM,
+      turns: turns.length > 0 ? [...turns] : [cornerNumber],
     });
   });
   return corners;

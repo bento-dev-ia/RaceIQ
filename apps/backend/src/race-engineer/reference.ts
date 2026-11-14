@@ -41,9 +41,60 @@ export class CornerReferenceSet {
     this._laps++;
     for (const [key, pass] of passes) {
       const current = this.driverBest.get(key);
-      if (!current || pass.segTime < current.segTime) this.driverBest.set(key, { ...pass, source: "driver" });
+      if (!current || pass.segTime < current.segTime) {
+        this.driverBest.set(key, { ...pass, source: "driver" });
+        const corner = this.corners.find((c) => c.key === key);
+        if (corner) this.driverInputs.set(key, samples.filter((s) => s.d >= corner.startM && s.d <= corner.endM));
+      }
+    }
+    const lapTime = samples[samples.length - 1].t;
+    if (lapTime > 0 && (this.baseLapTime === null || lapTime < this.baseLapTime)) {
+      this.baseLapTime = lapTime;
+      this.baseLap = samples;
     }
     this.changed();
+  }
+
+  /** Driver pedal/steering samples of the best pass through each corner. */
+  private readonly driverInputs = new Map<string, readonly EngineerSample[]>();
+  /** Fastest complete driver lap: fills the straights between corners. */
+  private baseLap: readonly EngineerSample[] = [];
+  private baseLapTime: number | null = null;
+
+  /**
+   * "Ideal lap" inputs on a fixed distance grid: the best pass through every
+   * corner stitched onto the fastest lap. Bots only expose position, so the
+   * pedals and steering always come from the driver's own laps.
+   */
+  idealInputs(trackLengthM: number, stepM = 2): IdealInputs | null {
+    if (this.baseLap.length < 2 && this.driverInputs.size === 0) return null;
+    const count = Math.max(1, Math.ceil(trackLengthM / stepM) + 1);
+    const throttle = new Float32Array(count);
+    const brake = new Float32Array(count);
+    const steer = new Float32Array(count);
+    const speed = new Float32Array(count);
+    const fill = (samples: readonly EngineerSample[], fromM: number, toM: number): void => {
+      if (samples.length === 0) return;
+      let j = 0;
+      for (let i = Math.max(0, Math.ceil(fromM / stepM)); i < count && i * stepM <= toM; i++) {
+        const d = i * stepM;
+        while (j < samples.length - 2 && samples[j + 1].d < d) j++;
+        const a = samples[j];
+        const b = samples[Math.min(j + 1, samples.length - 1)];
+        if (d < a.d - stepM * 4 || d > b.d + stepM * 4) continue; // no data near this point
+        const k = b.d > a.d ? Math.min(1, Math.max(0, (d - a.d) / (b.d - a.d))) : 0;
+        throttle[i] = a.throttle + (b.throttle - a.throttle) * k;
+        brake[i] = a.brake + (b.brake - a.brake) * k;
+        steer[i] = a.steer + (b.steer - a.steer) * k;
+        speed[i] = a.v + (b.v - a.v) * k;
+      }
+    };
+    fill(this.baseLap, 0, trackLengthM);
+    for (const corner of this.corners) {
+      const inputs = this.driverInputs.get(corner.key);
+      if (inputs) fill(inputs, corner.startM, corner.endM);
+    }
+    return { stepM, throttle, brake, steer, speed };
   }
 
   addBotLap(samples: readonly EngineerSample[]): void {
@@ -99,6 +150,17 @@ export class CornerReferenceSet {
     for (const c of this.corners) total += this.get(c.key)?.segTime ?? 0;
     return total;
   }
+}
+
+export interface IdealInputs {
+  stepM: number;
+  /** 0..1 per grid point. */
+  throttle: Float32Array;
+  brake: Float32Array;
+  /** -1..1 per grid point (left negative). */
+  steer: Float32Array;
+  /** km/h per grid point. */
+  speed: Float32Array;
 }
 
 export type { CornerPass };

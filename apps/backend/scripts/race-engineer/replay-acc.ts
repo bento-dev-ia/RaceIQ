@@ -6,6 +6,8 @@
  *   bun apps/backend/scripts/race-engineer/replay-acc.ts <recording.bin[.gz]> [--bots]
  */
 import { readKunosFrames } from "@raceiq/capture-formats/kunos/dump";
+import { unpackTriplet } from "@raceiq/capture-formats/kunos/pack-triplet";
+import { iterateSessionCaptureFrames } from "@raceiq/backend-core/session-capture/source-loader";
 import { STATIC } from "@raceiq/capture-formats/acc/structs";
 import { initGameAdapters } from "@raceiq/game-catalogs/games/init";
 import { getAccCarByModel } from "@raceiq/game-acc-metadata/racing/cars/acc";
@@ -17,22 +19,37 @@ import { initServerGameAdapters } from "../../src/games/init";
 import { readAccGraphics, readAccTrackLength } from "../../src/race-engineer/acc-graphics";
 import { cornersFromSegments } from "../../src/race-engineer/service";
 import { RaceEngineerSession } from "../../src/race-engineer/session";
+import { saveEngineerLap } from "../../src/race-engineer/lap-store";
+import { guideForTrack, guideForTurns } from "../../src/race-engineer/track-knowledge";
 import { resolveTrackLengthM } from "../../src/race-engineer/track-length";
 import { initDb } from "@raceiq/backend-core/db/index";
 
 await initDb();
 
-const path = process.argv[2];
+// Several paths are replayed in order as one session (RaceIQ stores one chunk per lap).
+const paths = process.argv.slice(2).filter((a) => !a.startsWith("--"));
 const learnBots = process.argv.includes("--bots");
-if (!path) {
-  console.error("usage: replay-acc.ts <recording> [--bots]");
+const lengthArg = Number(process.argv.find((a) => a.startsWith("--length="))?.slice(9));
+if (paths.length === 0) {
+  console.error("usage: replay-acc.ts <recording> [more chunks…] [--bots] [--length=<m>]");
   process.exit(1);
 }
 
 initGameAdapters();
 initServerGameAdapters();
 
-const frames = readKunosFrames(path);
+// Accepts both ACCTEST dumps and RaceIQ's own per-lap capture chunks (data/sessions/acc/...).
+async function readFrames(path: string): Promise<{ physics: Buffer; graphics: Buffer; staticData: Buffer }[]> {
+  const dump = readKunosFrames(path);
+  if (dump.length > 0) return dump;
+  const out: { physics: Buffer; graphics: Buffer; staticData: Buffer }[] = [];
+  for await (const record of iterateSessionCaptureFrames({ rawFile: path, source: null, gameId: "acc", carId: "", trackId: "" })) {
+    const triplet = unpackTriplet(record.frame);
+    if (triplet) out.push({ physics: Buffer.from(triplet.physics), graphics: Buffer.from(triplet.graphics), staticData: Buffer.from(triplet.staticData) });
+  }
+  return out;
+}
+const frames = (await Promise.all(paths.map(readFrames))).flat();
 let carId = "";
 let trackId = "";
 for (const f of frames) {
@@ -47,12 +64,21 @@ for (const f of frames) {
 }
 
 const { segments } = await resolveTrackSegments(trackId, "acc");
-const totalDist = frames.map((f) => readAccTrackLength(f.staticData)).find((l) => l > 0) ?? resolveTrackLengthM(trackId, "acc");
-const corners = cornersFromSegments(segments, totalDist);
+const totalDist = lengthArg > 0 ? lengthArg : frames.map((f) => readAccTrackLength(f.staticData)).find((l) => l > 0) ?? resolveTrackLengthM(trackId, "acc");
+const trackGuide = guideForTrack(trackId);
+const corners = cornersFromSegments(segments, totalDist).map((c) => ({ ...c, guide: guideForTurns(trackGuide, c.turns ?? []) }));
 console.log(`track length ${totalDist.toFixed(0)} m, ${corners.length} corners: ${corners.map((c) => c.spokenName).join(" | ")}`);
 if (corners.length === 0) process.exit(0);
 
 const session = new RaceEngineerSession(corners, totalDist, [], (lapTimeS, total) => console.log(`   [bot lap #${total}: ${lapTimeS.toFixed(2)}s]`));
+// --save: store the replayed valid laps as the engineer's reference for this car/track (uses DATA_DIR).
+if (process.argv.includes("--save")) {
+  const key = `acc-${carId}-${trackId}`;
+  session.coach.onReferenceLap = (samples, lapTimeS) => {
+    saveEngineerLap(key, samples, lapTimeS);
+    console.log(`   [saved reference lap ${lapTimeS.toFixed(3)}s → ${key}]`);
+  };
+}
 // Recordings are not fixed-rate: advance the clock with the game's own lap timer.
 let nowMs = 0;
 let lastLap = -1;

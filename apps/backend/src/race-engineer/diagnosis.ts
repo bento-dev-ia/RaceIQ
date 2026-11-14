@@ -5,6 +5,11 @@ const MAX_BRAKE_STEP_M = 30;
 const BRAKE_PRESSURE_TOL = 0.12;
 const MIN_SPEED_TOL_KMH = 5;
 const THROTTLE_TOL_M = 15;
+const TURN_IN_TOL_M = 10;
+const MAX_TURN_IN_STEP_M = 20;
+/** Relative steering difference worth mentioning, and the minimum reference lock to compare. */
+const STEER_TOL = 0.2;
+const MIN_REF_STEER = 0.05;
 
 /**
  * What the driver did differently from the reference in one corner, most
@@ -33,6 +38,24 @@ export function diagnoseCorner(attempt: CornerPass, ref: CornerReference): Corne
     }
   } else if (attempt.brakeStartM !== null && ref.brakeStartM === null) {
     issues.push({ kind: "brake-early", ...base });
+  }
+
+  // Turn-in point (steering past 40% of its peak). Early turn-in runs the car
+  // wide and delays the throttle; late turn-in kills the mid-corner speed.
+  // Only said when it cost something (mid-corner speed or a late throttle).
+  const turnInShift = Math.max(-MAX_TURN_IN_STEP_M, Math.min(MAX_TURN_IN_STEP_M, ref.turnInM - attempt.turnInM));
+  const lateThrottle = ref.throttleOnM !== null && attempt.throttleOnM !== null && attempt.throttleOnM > ref.throttleOnM + THROTTLE_TOL_M;
+  if (turnInShift > TURN_IN_TOL_M && (slowerMid || lateThrottle)) {
+    issues.push({ kind: "turn-in-early", turnInShiftM: turnInShift, ...base });
+  } else if (turnInShift < -TURN_IN_TOL_M && slowerMid) {
+    issues.push({ kind: "turn-in-late", turnInShiftM: turnInShift, ...base });
+  }
+
+  // Steering amount: more lock than the reference scrubs speed (understeer /
+  // overdriving); less usually means a wide, slow line. Said only when it cost.
+  if (Number.isFinite(ref.peakSteer) && Number.isFinite(attempt.peakSteer) && ref.peakSteer > MIN_REF_STEER && (slowerMid || lateThrottle)) {
+    if (attempt.peakSteer > ref.peakSteer * (1 + STEER_TOL)) issues.push({ kind: "steer-too-much", ...base });
+    else if (attempt.peakSteer < ref.peakSteer * (1 - STEER_TOL)) issues.push({ kind: "steer-too-little", ...base });
   }
 
   if (slowerMid && !issues.some((i) => i.kind === "brake-late")) {

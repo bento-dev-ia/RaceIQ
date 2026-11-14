@@ -4,6 +4,8 @@ import {
   ENGINEER_ON_PHRASE,
   NO_REFERENCE_PHRASE,
   REFERENCE_READY_PHRASE,
+  briefingPhrase,
+  guidePhrase,
   lapSummaryPhrase,
   postCornerPhrase,
   preCornerPhrase,
@@ -32,6 +34,8 @@ export interface CoachOptions {
   focusDeltaS?: number;
   /** Post-corner threshold for the other corners, seconds. */
   otherDeltaS?: number;
+  /** Brief every non-focus corner (gear, speed, brake point). Default true. */
+  briefAll?: boolean;
 }
 
 interface Attempt {
@@ -51,11 +55,13 @@ interface Pending {
 /** A focus corner's tip becomes sayable once its silence zone is this close. */
 const PRE_CORNER_LOOKAHEAD_M = 1500;
 const MAX_COACHABLE_DELTA_S = 2;
+/** Briefings for non-focus corners open this close to the corner's silence zone. */
+const BRIEFING_LOOKAHEAD_M = 700;
 
 /** Rough TTS duration in seconds for a pt-BR phrase at rate ~1.1 (≈3 words/s). */
 export function estimateSpeechSeconds(text: string): number {
   const words = text.trim().split(/\s+/).length;
-  return 0.4 + words * 0.32;
+  return 0.7 + words * 0.32; // + radio pips before and after
 }
 
 /**
@@ -95,10 +101,17 @@ export class RaceEngineerCoach {
     this.trackLengthM = trackLengthM;
     this.reference = reference ?? new CornerReferenceSet(corners);
     this.silenceM = options.silenceBeforeBrakeM ?? 150;
-    this.focusCount = options.focusCount ?? 3;
+    // Every corner where time is lost gets its tip; the costliest ones win when the gaps are short.
+    this.focusCount = options.focusCount ?? corners.length;
     this.focusDeltaS = options.focusDeltaS ?? 0.1;
     this.otherDeltaS = options.otherDeltaS ?? 0.3;
+    this.briefAll = options.briefAll ?? true;
   }
+
+  private readonly briefAll: boolean;
+
+  /** Called with every complete, valid lap that fed the reference (for persistence). */
+  onReferenceLap?: (samples: readonly EngineerSample[], lapTimeS: number) => void;
 
   get focusKeys(): readonly string[] {
     return this.focus;
@@ -189,6 +202,7 @@ export class RaceEngineerCoach {
     if (complete && wasValid) {
       const hadReference = this.reference.hasReference;
       this.reference.addDriverLap(samples);
+      if (frame.lastLapS > 0) this.onReferenceLap?.(samples, frame.lastLapS);
       if (!hadReference && this.reference.hasReference && !this.announcedReady) {
         this.announcedReady = true;
         this.enqueue({ kind: "status", priority: 2, text: REFERENCE_READY_PHRASE }, Number.POSITIVE_INFINITY, frame.lapNumber);
@@ -275,7 +289,7 @@ export class RaceEngineerCoach {
       if (Math.abs(deltaS) >= threshold && Math.abs(deltaS) <= MAX_COACHABLE_DELTA_S) {
         const next = this.nextZoneStart(d);
         this.enqueue(
-          { kind: "post-corner", priority: isFocus ? 3 : 2, cornerKey: corner.key, text: postCornerPhrase(deltaS, deltaS > 0 ? issues[0] : undefined) },
+          { kind: "post-corner", priority: isFocus ? 3 : 2, cornerKey: corner.key, text: postCornerPhrase(deltaS, deltaS > 0 ? issues[0] : undefined, deltaS > 0 ? issues[1] : undefined) },
           next,
           this.currentLap,
         );
@@ -301,13 +315,100 @@ export class RaceEngineerCoach {
       const attempt = this.attempts.get(key);
       const ref = this.reference.get(key);
       if (!attempt || !ref) continue;
-      const text = preCornerPhrase(this.corners[index].spokenName, ref, attempt.issues[0]);
+      const issue = attempt.issues[0];
+      let text = preCornerPhrase(this.corners[index].spokenName, ref, issue);
+      // A visual turn-in reference from the track guide beats a number when the turn-in is what's wrong.
+      const turnInCue = this.corners[index].guide?.turnIn;
+      if (turnInCue && (issue?.kind === "turn-in-early" || issue?.kind === "turn-in-late")) text = `${text.slice(0, -1)}, ${turnInCue}.`;
       this.sentPre.add(sentKey);
       this.enqueue({ kind: "pre-corner", priority: 4, cornerKey: key, text }, zoneStart, this.currentLap);
     }
+    this.scheduleBriefing(d);
+  }
+
+  /**
+   * Every other corner gets a short briefing (name, gear, minimum speed, brake
+   * point) right before it, lowest priority, so the driver always hears what
+   * is coming even before there is anything to fix. Only the next corner is
+   * considered; if the gap is too short the briefing is simply skipped.
+   */
+  private scheduleBriefing(d: number): void {
+    if (!this.briefAll) return;
+    const index = this.nextCornerIndex(d);
+    if (index < 0) return;
+    const corner = this.corners[index];
+    if (this.focus.includes(corner.key)) return;
+    const ref = this.reference.get(corner.key);
+    // Without a reference of our own, a published track guide still gives the marker and gear.
+    if (!ref && !corner.guide) return;
+    const wraps = this.zone(index).start <= d;
+    const targetLap = wraps ? this.currentLap + 1 : this.currentLap;
+    const sentKey = `${targetLap}:brief:${corner.key}`;
+    if (this.sentPre.has(sentKey)) return;
+    const zoneStart = this.zone(index).start + (wraps ? this.trackLengthM : 0);
+    if (zoneStart <= d || zoneStart - d > BRIEFING_LOOKAHEAD_M) return;
+    this.sentPre.add(sentKey);
+    // The guide's key tip is said once per session per corner; after that, only the numbers.
+    const firstTime = !this.guideTipSaid.has(corner.key);
+    let text: string;
+    if (ref) {
+      text = briefingPhrase(corner.spokenName, ref);
+      if (corner.guide?.tip && firstTime) text += ` ${corner.guide.tip.charAt(0).toUpperCase()}${corner.guide.tip.slice(1)}.`;
+    } else {
+      text = guidePhrase(corner.spokenName, corner.guide!, firstTime);
+    }
+    if (corner.guide) this.guideTipSaid.add(corner.key);
+    this.enqueue({ kind: "pre-corner", priority: 1, cornerKey: corner.key, text }, zoneStart, this.currentLap);
+  }
+
+  /**
+   * Index of the corner whose silence zone comes next after `d`, by distance
+   * ahead on track (wrapping past the line). Independent of which exits were
+   * seen, so it is right even when the lap started from the pit lane.
+   */
+  private nextCornerIndex(d: number): number {
+    let best = -1;
+    let bestAhead = Number.POSITIVE_INFINITY;
+    for (let i = 0; i < this.corners.length; i++) {
+      let ahead = this.zone(i).start - d;
+      if (ahead <= 0) ahead += this.trackLengthM;
+      if (ahead < bestAhead) {
+        bestAhead = ahead;
+        best = i;
+      }
+    }
+    return best;
   }
 
   private readonly sentPre = new Set<string>();
+  private readonly guideTipSaid = new Set<string>();
+
+  /**
+   * Phrases this coach is likely to say next lap — briefings and tips for
+   * every corner, plus post-corner verdicts near the current deltas — so a
+   * natural-voice cache can be filled before they are needed.
+   */
+  plannedPhrases(): string[] {
+    const out: string[] = [ENGINEER_ON_PHRASE, NO_REFERENCE_PHRASE, REFERENCE_READY_PHRASE];
+    for (const corner of this.corners) {
+      const ref = this.reference.get(corner.key);
+      if (!ref) {
+        if (corner.guide) out.push(guidePhrase(corner.spokenName, corner.guide, true), guidePhrase(corner.spokenName, corner.guide, false));
+        continue;
+      }
+      const attempt = this.attempts.get(corner.key);
+      if (this.focus.includes(corner.key) && attempt) out.push(preCornerPhrase(corner.spokenName, ref, attempt.issues[0]));
+      else out.push(briefingPhrase(corner.spokenName, ref));
+      if (attempt && attempt.deltaS > 0) {
+        for (const d of [-0.1, 0, 0.1]) {
+          const delta = Math.max(0.1, attempt.deltaS + d);
+          out.push(postCornerPhrase(delta, attempt.issues[0], attempt.issues[1]));
+        }
+      }
+    }
+    for (let tenths = 1; tenths <= 5; tenths++) out.push(postCornerPhrase(-tenths / 10, undefined));
+    return out;
+  }
 
   private enqueue(callout: EngineerCallout, expiresAtM: number, lap: number): void {
     this.pending.push({ callout, expiresAtM, lap });
@@ -315,7 +416,11 @@ export class RaceEngineerCoach {
 
   private drain(frame: CoachFrame): EngineerCallout[] {
     const d = frame.d;
-    this.pending = this.pending.filter((p) => (p.callout.kind === "status" || p.lap === this.currentLap) && d < p.expiresAtM);
+    // Pre-corner callouts are only valid while their corner is actually just ahead
+    // (the position jumps when leaving the pit box, which would otherwise keep a
+    // stale "next corner" alive for most of a lap).
+    this.pending = this.pending.filter((p) => (p.callout.kind === "status" || p.lap === this.currentLap) && d < p.expiresAtM
+      && (p.callout.kind !== "pre-corner" || p.expiresAtM - d <= PRE_CORNER_LOOKAHEAD_M + 200));
     if (this.pending.length === 0 || frame.nowMs < this.speakingUntilMs || this.inZone(d)) return [];
 
     // The car keeps accelerating on the straight: budget 15% more distance.

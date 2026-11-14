@@ -9,8 +9,9 @@
   #define MyAppVersion "0.0.0"
 #endif
 
-#define MyAppName "RaceIQ"
-#define MyAppPublisher "SpeedHQ (fork: bento-dev-ia)"
+#define MyAppName "Bento Racing"
+; Bento Racing is a fork of RaceIQ by SpeedHQ (AGPL-3.0); the original copyright and license are kept.
+#define MyAppPublisher "Bento Racing"
 #define MyAppURL "https://github.com/bento-dev-ia/RaceIQ"
 #define MyAppExeName "raceiq.exe"
 
@@ -22,12 +23,13 @@ AppPublisher={#MyAppPublisher}
 AppPublisherURL={#MyAppURL}
 AppSupportURL={#MyAppURL}
 AppUpdatesURL={#MyAppURL}
-DefaultDirName={localappdata}\{#MyAppName}
+; Install folder stays "RaceIQ" so existing installs, data and settings carry over.
+DefaultDirName={localappdata}\RaceIQ
 DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
 OutputDir=..
-OutputBaseFilename=RaceIQ-Setup-v{#MyAppVersion}
+OutputBaseFilename=BentoRacing-Setup-v{#MyAppVersion}
 Compression=lzma
 SolidCompression=yes
 WizardStyle=modern
@@ -42,10 +44,10 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "brazilianportuguese"; MessagesFile: "compiler:Languages\BrazilianPortuguese.isl"
 
 [CustomMessages]
-english.StartWithWindows=Start RaceIQ when Windows starts
-brazilianportuguese.StartWithWindows=Iniciar o RaceIQ com o Windows
-english.StopRaceIQ=Stop RaceIQ
-brazilianportuguese.StopRaceIQ=Encerrar RaceIQ
+english.StartWithWindows=Start Bento Racing when Windows starts
+brazilianportuguese.StartWithWindows=Iniciar o Bento Racing com o Windows
+english.StopRaceIQ=Stop Bento Racing
+brazilianportuguese.StopRaceIQ=Encerrar Bento Racing
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
@@ -92,7 +94,7 @@ function PrepareToInstall(var NeedsRestart: Boolean): String;
 var
   ResultCode: Integer;
 begin
-  UpdatePrepareStatus('Closing RaceIQ...');
+  UpdatePrepareStatus('Closing Bento Racing...');
   // Only RaceIQ itself is closed; other programs on port 3117 are never touched.
   Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM raceiq.exe', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
 

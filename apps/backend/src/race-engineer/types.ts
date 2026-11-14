@@ -33,6 +33,10 @@ export interface EngineerCorner {
   spokenName: string;
   startM: number;
   endM: number;
+  /** Official turn numbers covered by this segment. */
+  turns?: number[];
+  /** Published-guide knowledge for this corner, when the track has a guide. */
+  guide?: { brake: string; gear: string; turnIn?: string; tip: string };
 }
 
 /** Lap time as a function of distance inside a corner segment (relative to segment start). */
@@ -53,6 +57,8 @@ export interface CornerPass {
   brakeBeforeTurnInM: number | null;
   /** Peak brake 0..1 (NaN when unknown). */
   peakBrake: number;
+  /** Most steering (|−1..1|) between turn-in and just past the apex (NaN when unknown). */
+  peakSteer: number;
   /** Brake still applied (≥8%) for at least 10 m past turn-in. */
   trailBraking: boolean | null;
   entryKmh: number;
@@ -84,12 +90,18 @@ export type IssueKind =
   | "trail-brake"
   | "min-speed-low"
   | "gear"
-  | "throttle-late";
+  | "throttle-late"
+  | "turn-in-early"
+  | "turn-in-late"
+  | "steer-too-much"
+  | "steer-too-little";
 
 export interface CornerIssue {
   kind: IssueKind;
   /** Metres to move the brake point (positive = later). */
   brakeShiftM?: number;
+  /** Metres to move the turn-in (positive = later). */
+  turnInShiftM?: number;
   refBrakeBeforeM?: number | null;
   refPeakBrakePct?: number;
   refMinKmh?: number;

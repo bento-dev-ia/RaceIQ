@@ -67,6 +67,34 @@
   --app-accent-hover: #67e8f9;
   --app-highlight: #06b6d4;
   --app-podium-gold: #d4af37;
+
+  /* Trail-braking trainer: chart series (validated pair on the dark surface) and the top-down scene */
+  --trail-you: #3b82f6;
+  --trail-ideal: #d97706;
+  --trail-ideal-line: rgb(217 119 6 / 0.6);
+  --trail-grass: #14361f;
+  --trail-grass-stripe-a: #173d23;
+  --trail-grass-stripe-b: #1b4529;
+  --trail-gravel: #b9a77c;
+  --trail-edge-line: #f1f1f1;
+  --trail-asphalt: #2f3237;
+  --trail-kerb-red: #d62828;
+  --trail-kerb-white: #f4f4f4;
+  --trail-board: #fafafa;
+  --trail-board-ink: #111111;
+  --trail-brake-line: rgb(255 255 255 / 0.65);
+  --trail-skid: rgb(10 10 10 / 0.55);
+  --trail-tyre: #111111;
+  --trail-car: #2563eb;
+  --trail-car-sliding: #ef4444;
+  --trail-car-stripe: #e5e7eb;
+  --trail-cockpit: #0f172a;
+  --trail-wing: #0b0b0b;
+  --trail-brake-light-on: #ff2d2d;
+  --trail-brake-light-off: #5a0b0b;
+  --trail-brake-glow: rgb(255 45 45 / 0.25);
+  --trail-dial-ring: rgb(255 255 255 / 0.4);
+  --trail-dial-grid: rgb(255 255 255 / 0.12);
   --app-podium-silver: #c0c0c0;
   --app-podium-bronze: #cd7f32;
   --ai-accent: var(--color-amber-500);

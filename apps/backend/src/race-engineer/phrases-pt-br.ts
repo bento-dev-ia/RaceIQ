@@ -29,6 +29,10 @@ const TIP: Record<IssueKind, (i: CornerIssue) => string> = {
   "min-speed-low": (i) => (i.refMinKmh ? `leva mais velocidade, mínima de ${i.refMinKmh}` : "leva mais velocidade no meio"),
   gear: (i) => (i.refGear ? `usa a ${gearWord(i.refGear)}` : "confere a marcha"),
   "throttle-late": () => "acelera mais cedo na saída",
+  "turn-in-early": (i) => (i.turnInShiftM ? `espera, vira uns ${roundBrakeMetres(Math.abs(i.turnInShiftM))} metros mais tarde` : "espera mais pra virar"),
+  "turn-in-late": (i) => (i.turnInShiftM ? `vira uns ${roundBrakeMetres(Math.abs(i.turnInShiftM))} metros antes` : "vira um pouco antes"),
+  "steer-too-much": () => "menos volante, deixa o carro rolar",
+  "steer-too-little": () => "mais volante, aponta pro ápice",
 };
 
 const CAUSE: Record<IssueKind, string> = {
@@ -40,6 +44,10 @@ const CAUSE: Record<IssueKind, string> = {
   "min-speed-low": "mínima baixa",
   gear: "marcha diferente",
   "throttle-late": "acelerou tarde",
+  "turn-in-early": "virou cedo",
+  "turn-in-late": "virou tarde",
+  "steer-too-much": "volante demais",
+  "steer-too-little": "pouco volante",
 };
 
 /**
@@ -56,10 +64,34 @@ export function preCornerPhrase(spokenName: string, ref: CornerReference, issue:
   return `${text}.`;
 }
 
-export function postCornerPhrase(deltaS: number, issue: CornerIssue | undefined): string {
+/**
+ * Plain briefing for a corner with nothing to fix yet:
+ * "Lesmo 1, segunda, 120, freia nos 50 metros."
+ */
+export function briefingPhrase(spokenName: string, ref: CornerReference): string {
+  const parts: string[] = [spokenName];
+  if (ref.gear > 0) parts.push(gearWord(ref.gear));
+  if (ref.minKmh > 0) parts.push(String(Math.round(ref.minKmh / 5) * 5));
+  const marker = brakeMarker(ref);
+  if (marker) parts.push(marker);
+  return `${parts.join(", ")}.`;
+}
+
+/** From a published track guide, before the driver has a reference: "Parabolica, terceira, freia na placa de 100." */
+export function guidePhrase(spokenName: string, guide: { brake: string; gear: string; tip: string }, withTip: boolean): string {
+  const parts = [spokenName];
+  if (guide.gear) parts.push(guide.gear);
+  parts.push(guide.brake ? `freia ${guide.brake}` : "pé embaixo");
+  let text = `${parts.join(", ")}.`;
+  if (withTip && guide.tip) text += ` ${capitalize(guide.tip)}.`;
+  return text;
+}
+
+export function postCornerPhrase(deltaS: number, issue: CornerIssue | undefined, second?: CornerIssue): string {
   const amount = formatDelta(Math.abs(deltaS));
   if (deltaS < 0) return `Boa, ganhou ${amount}.`;
-  return issue ? `Perdeu ${amount}, ${CAUSE[issue.kind]}.` : `Perdeu ${amount}.`;
+  if (!issue) return `Perdeu ${amount}.`;
+  return second ? `Perdeu ${amount}, ${CAUSE[issue.kind]} e ${CAUSE[second.kind]}.` : `Perdeu ${amount}, ${CAUSE[issue.kind]}.`;
 }
 
 export function lapSummaryPhrase(lapTimeS: number, bestS: number | null, focusName: string | null): string {

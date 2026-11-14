@@ -199,8 +199,8 @@ export async function bootServer(options: BootOptions = {}): Promise<RunningServ
   if (!desktop) startTray(trayUrl);
 
   if (IS_COMPILED && process.platform === "win32" && !desktop) {
-    process.title = "RaceIQ";
-    console.log(`\n  RaceIQ está rodando em http://localhost:${boundHttpPort}\n  Feche esta janela para encerrar o RaceIQ.\n`);
+    process.title = "Bento Racing";
+    console.log(`\n  Bento Racing está rodando em http://localhost:${boundHttpPort}\n  Feche esta janela para encerrar o Bento Racing.\n`);
   }
 
   if (openDashboardRequested && !desktop) {

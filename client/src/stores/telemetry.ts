@@ -14,6 +14,8 @@ export interface DisplaySettings {
   recordLmuOpponents: boolean;
   raceEngineerEnabled: boolean;
   raceEngineerLearnFromBots: boolean;
+  raceEngineerOverlayScale: number;
+  raceEngineerVoiceId: string;
   unit: "metric" | "imperial";
   temperatureUnit: "C" | "F";
   aiProvider: "gemini" | "openai" | "anthropic" | "deepseek" | "openai-compatible";
@@ -74,6 +76,8 @@ export const DEFAULT_DISPLAY_SETTINGS: DisplaySettings = {
   recordLmuOpponents: true,
   raceEngineerEnabled: false,
   raceEngineerLearnFromBots: false,
+  raceEngineerOverlayScale: 1,
+  raceEngineerVoiceId: "",
   unit: "metric",
   temperatureUnit: "C",
   aiProvider: "gemini",

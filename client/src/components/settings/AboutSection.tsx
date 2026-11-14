@@ -43,11 +43,16 @@ export function AboutSection() {
           {versionInfo?.updateAvailable && (
             <div className="flex items-center justify-between py-3 px-4 rounded-lg bg-status-warning/10 border border-status-warning/30">
               <span className="text-sm text-status-warning">{m.about_update_available()}</span>
-              <a href="https://github.com/SpeedHQ/RaceIQ/releases/latest" target="_blank" rel="noreferrer" className="text-xs text-status-warning underline underline-offset-2">
+              <a href="https://github.com/bento-dev-ia/RaceIQ/releases/latest" target="_blank" rel="noreferrer" className="text-xs text-status-warning underline underline-offset-2">
                 {m.label_download()} v{versionInfo.latest}
               </a>
             </div>
           )}
+          {/* AGPL-3.0 §5(d): appropriate legal notice in the interactive UI. */}
+          <p className="pt-2 text-xs text-app-text-muted">
+            {m.about_fork_notice()}{" "}
+            <a href="https://github.com/bento-dev-ia/RaceIQ" target="_blank" rel="noreferrer" className="underline underline-offset-2">github.com/bento-dev-ia/RaceIQ</a>
+          </p>
         </div>
       </div>
     </section>

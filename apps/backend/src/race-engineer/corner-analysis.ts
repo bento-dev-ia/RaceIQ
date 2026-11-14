@@ -110,6 +110,10 @@ export function analyzeCornerPass(
     if (hit) turnInM = hit.d;
   }
 
+  // Steering used through the corner (turn-in → just past the apex).
+  let cornerSteer = steerKnown ? 0 : Number.NaN;
+  if (steerKnown) for (const s of window) if (s.d >= turnInM && s.d <= apexM + 30) cornerSteer = Math.max(cornerSteer, Math.abs(s.steer));
+
   const entry = window.find((s) => s.d >= turnInM) ?? apex;
   // Gear at the apex; momentary downshifts while braking don't count.
   let gear = apex.gear > 0 ? apex.gear : -1;
@@ -144,6 +148,7 @@ export function analyzeCornerPass(
     apexM,
     brakeBeforeTurnInM: brakeStartM === null ? null : Math.max(0, turnInM - brakeStartM),
     peakBrake,
+    peakSteer: cornerSteer,
     trailBraking: brakeKnown ? releaseM !== null && releaseM - turnInM >= TRAIL_MIN_M : null,
     entryKmh: entry.v,
     minKmh: apex.v,

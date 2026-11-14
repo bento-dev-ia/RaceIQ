@@ -267,7 +267,7 @@ return (
               <>
                 {anchor && <line x1={anchor.x} y1={anchor.y} x2={position.x} y2={position.y} stroke="var(--app-text-secondary)" strokeWidth="0.6" opacity="0.5" pointerEvents="none" />}
                 <circle className="max-sm:[r:7]" cx={position.x} cy={position.y} r="5.5" fill={splitColor(delta)} stroke="var(--app-bg)" strokeWidth="0.8" />
-                <text className="max-sm:text-[8px]" x={position.x} y={position.y} textAnchor="middle" dominantBaseline="central" fill={delta === null ? "var(--app-text)" : delta > 0 ? "var(--app-text)" : "var(--app-bg)"} fontSize="6" fontWeight="var(--font-weight-bold)">
+                <text className="max-sm:text-app-nano" x={position.x} y={position.y} textAnchor="middle" dominantBaseline="central" fill={delta === null ? "var(--app-text)" : delta > 0 ? "var(--app-text)" : "var(--app-bg)"} fontSize="6" fontWeight="var(--font-weight-bold)">
                   {number}
                 </text>
               </>
