@@ -1,7 +1,5 @@
-import { writeFileSync, existsSync, readdirSync } from "node:fs";
-import { join, resolve } from "node:path";
-import { tmpdir } from "node:os";
-import { spawn } from "node:child_process";
+import { writeFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
 import { APP_VERSION } from "@raceiq/shared/platform/runtime/app-version";
 import { wsManager } from "../websocket-manager";
 import { isNewer } from "./version";
@@ -10,9 +8,13 @@ import { ROOT_DIR } from "../config/paths";
 export { isNewer };
 
 const VERSION = APP_VERSION;
-const GITHUB_REPO = "SpeedHQ/RaceIQ";
+// Fork build: releases come from the fork, and the app never downloads and
+// silently runs an installer by itself (download-and-execute is what
+// antivirus heuristics flag as a trojan downloader, and an upstream update
+// would also replace this fork). Updates are only announced with a link.
+const GITHUB_REPO = "bento-dev-ia/RaceIQ";
 const FOUR_HOURS_MS = 4 * 60 * 60 * 1000;
-const IN_APP_UPDATE_DISABLED = process.env.RACEIQ_DISABLE_IN_APP_UPDATE === "1" || process.env.RACEIQ_DESKTOP === "1";
+const IN_APP_UPDATE_DISABLED = true;
 
 // Dev/test overrides:
 // LOCAL_INSTALLER=path/to/RaceIQ-Setup.exe — skip download, use local installer
@@ -57,11 +59,11 @@ interface UpdateState {
   checked: boolean;
 }
 
-const EXTERNAL_UPDATE_URL = "https://github.com/SpeedHQ/RaceIQ/releases/latest";
+const EXTERNAL_UPDATE_URL = `https://github.com/${GITHUB_REPO}/releases/latest`;
 const UPDATES_DISABLED = !IS_WINDOWS || IN_APP_UPDATE_DISABLED;
 
 function getExternalUpdateUrl(): string | null {
-  return !IS_WINDOWS && !IN_APP_UPDATE_DISABLED ? EXTERNAL_UPDATE_URL : null;
+  return EXTERNAL_UPDATE_URL;
 }
 
 let state: UpdateState = {
@@ -239,89 +241,12 @@ export function startUpdateCheckSchedule(): void {
   i.unref?.();
 }
 
-/** Downloads the Inno Setup installer and runs it silently. Inno handles process kill, file swap, registry update, and relaunch. */
+/**
+ * Fork: in-app updates are disabled. Upstream downloaded the installer and ran
+ * it silently in the background, which antivirus engines treat as a trojan
+ * downloader (and an upstream build would also replace this fork). The update
+ * banner links to the fork's releases page instead.
+ */
 export async function applyUpdate(): Promise<void> {
-  if (IN_APP_UPDATE_DISABLED) {
-    throw new Error("Updates are managed by Docker. Pull the latest image and recreate the container.");
-  }
-  if (!IS_WINDOWS) {
-    throw new Error("Auto-update is only supported on Windows");
-  }
-  if (!state.updateAvailable || !state.latest) {
-    throw new Error("No update available");
-  }
-
-  const version = state.latest;
-  let installerPath: string;
-
-  // Local installer path — skip download entirely
-  if (LOCAL_INSTALLER) {
-    installerPath = resolve(LOCAL_INSTALLER);
-    if (!existsSync(installerPath)) {
-      throw new Error(`Local installer not found: ${installerPath}`);
-    }
-    console.log(`[Update] Using local installer: ${installerPath}`);
-
-    // Simulate download progress for UI testing (~2s total)
-    wsManager.broadcastNotification({ type: "update-progress", stage: "downloading", percent: 0 });
-    for (let p = 10; p <= 100; p += 10) {
-      await new Promise((r) => setTimeout(r, 200));
-      wsManager.broadcastNotification({ type: "update-progress", stage: "downloading", percent: p });
-    }
-  } else {
-    // Download from GitHub
-    if (!state.downloadUrl) throw new Error("No download URL available");
-    const downloadUrl = state.downloadUrl;
-    installerPath = join(tmpdir(), `RaceIQ-Setup-v${version}.exe`);
-
-    console.log(`[Update] Downloading installer v${version} from ${downloadUrl}`);
-    wsManager.broadcastNotification({ type: "update-progress", stage: "downloading", percent: 0 });
-
-    const res = await fetch(downloadUrl);
-    if (!res.ok) throw new Error(`Download failed: ${res.status}`);
-
-    const contentLength = Number(res.headers.get("content-length") || 0);
-    const body = res.body;
-
-    if (!body || !contentLength) {
-      const buffer = await res.arrayBuffer();
-      writeFileSync(installerPath, Buffer.from(buffer));
-    } else {
-      const chunks: Uint8Array[] = [];
-      let received = 0;
-      let lastBroadcast = 0;
-
-      for await (const chunk of body) {
-        chunks.push(chunk);
-        received += chunk.length;
-        const percent = Math.round((received / contentLength) * 100);
-        if (percent >= lastBroadcast + 5 || percent === 100) {
-          lastBroadcast = percent;
-          wsManager.broadcastNotification({ type: "update-progress", stage: "downloading", percent });
-        }
-      }
-
-      const buffer = Buffer.concat(chunks);
-      writeFileSync(installerPath, buffer);
-    }
-
-    console.log(`[Update] Downloaded to ${installerPath}`);
-  }
-
-  wsManager.broadcastNotification({ type: "update-progress", stage: "installing", percent: 100 });
-
-  // Run the installer silently — Inno Setup handles:
-  // - Killing the running process (PrepareToInstall in .iss)
-  // - Swapping all files in the install directory
-  // - Updating Windows registry (Apps & Features version)
-  // - Relaunching the app (postinstall Run section)
-  console.log(`[Update] Spawning installer: ${installerPath}`);
-  spawn(installerPath, ["/SILENT", "/NORESTART"], {
-    stdio: "ignore",
-    detached: true,
-  }).unref();
-
-  console.log(`[Update] Installer spawned. Process will be killed by Inno Setup.`);
-  // Small delay so the HTTP response can be sent before Inno kills us
-  setTimeout(() => process.exit(0), 500);
+  throw new Error(`Automatic updates are disabled in this build. Download the new version from ${EXTERNAL_UPDATE_URL}`);
 }

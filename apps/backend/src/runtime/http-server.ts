@@ -1,8 +1,6 @@
-import { execSync } from "node:child_process";
 import { resolve, sep } from "node:path";
 import { wsManager, type WSData } from "@raceiq/backend-core/runtime/websocket-manager";
 import { MAX_IBT_BYTES } from "../imports/iracing-ibt";
-import { IS_WINDOWS } from "@raceiq/backend-core/runtime/platform/shell";
 import { gameAssetsDir } from "@raceiq/shared/platform/runtime/data-paths";
 import { beginRequestAuthorization, endRequestAuthorization, httpAccess, type HttpAccess } from "./http-access";
 
@@ -27,18 +25,24 @@ export interface HttpServerOptions {
   access?: HttpAccess;
 }
 
-export function clearHttpPort(port: number): void {
+/**
+ * Who is listening on the HTTP port before we bind it.
+ *
+ * The upstream build force-killed *any* process listening on the port through
+ * a hidden shell. That can terminate unrelated
+ * programs and is the kind of behaviour antivirus heuristics flag, so this fork
+ * only looks: a running RaceIQ answers with `X-RaceIQ: 1`; anything else is
+ * another program and we refuse to start instead of killing it.
+ */
+export async function probeHttpPort(port: number, timeoutMs = 1500): Promise<"free" | "raceiq" | "other"> {
   try {
-    if (IS_WINDOWS) {
-      execSync(`powershell -NoProfile -Command "Get-NetTCPConnection -LocalPort ${port} -State Listen -EA 0 | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -EA 0 }"`, {
-        stdio: "ignore",
-        windowsHide: true,
-      });
-    } else {
-      execSync(`lsof -tiTCP:${port} -sTCP:LISTEN | xargs kill -9`, { stdio: "ignore" });
-    }
-  } catch {
-    // Nothing was listening — that's fine.
+    const response = await fetch(`http://127.0.0.1:${port}/`, { signal: AbortSignal.timeout(timeoutMs), redirect: "manual" });
+    await response.body?.cancel();
+    return response.headers.get("X-RaceIQ") === "1" || response.status === 401 || response.status === 423 ? "raceiq" : "other";
+  } catch (error) {
+    // Connection refused → free. A listener that accepts but never answers is someone else.
+    const message = error instanceof Error ? `${error.name} ${error.message}` : String(error);
+    return /timeout|abort/i.test(message) ? "other" : "free";
   }
 }
 

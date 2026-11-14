@@ -1,19 +1,21 @@
 import { dirname, join } from "node:path";
 import { IS_COMPILED } from "../config/paths";
-import { IS_WINDOWS, runPowerShellCommand } from "./shell";
+import { IS_WINDOWS } from "./shell";
+import { regDeleteValue, regGetBinary, regGetString, regSetString } from "./win32-native";
 
-const REG_PATH = "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run";
-const APPROVED_PATH = "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\StartupApproved\\Run";
+/**
+ * Start-with-Windows toggle (Settings → General). Off unless the user turns it on.
+ *
+ * Fork note: upstream read and wrote these keys through hidden PowerShell on
+ * every settings load. A background process polling its own autorun entry via
+ * PowerShell is a persistence-trojan pattern for antivirus behaviour engines,
+ * so this uses the registry API in-process, and disabling removes the entry
+ * instead of leaving a dormant one.
+ */
+const RUN_KEY = "Software\\Microsoft\\Windows\\CurrentVersion\\Run";
+const APPROVED_KEY = "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\StartupApproved\\Run";
 const VALUE_NAME = "RaceIQ";
 
-// StartupApproved binary values used by Windows (same format as Task Manager)
-const ENABLED_BYTES = "02,00,00,00,00,00,00,00,00,00,00,00";
-const DISABLED_BYTES = "03,00,00,00,00,00,00,00,00,00,00,00";
-
-// Each check runs PowerShell synchronously and blocks the server, and
-// loadSettings() checks on every call. Cache briefly; our own writes reset it.
-const LAUNCH_ON_LOGIN_CACHE_MS = 60_000;
-let launchOnLoginCache: { value: boolean; at: number } | null = null;
 // The native desktop shell owns its own startup entry, independently of the backend.
 export function isDesktopStartupOwned(): boolean {
   return process.env.RACEIQ_DESKTOP === "1";
@@ -23,23 +25,13 @@ export function isLaunchOnLoginSupported(): boolean {
   return !isDesktopStartupOwned() && IS_WINDOWS && IS_COMPILED;
 }
 
-
 export function isLaunchOnLoginEnabled(): boolean {
   if (!isLaunchOnLoginSupported()) return false;
-  if (launchOnLoginCache && Date.now() - launchOnLoginCache.at < LAUNCH_ON_LOGIN_CACHE_MS) return launchOnLoginCache.value;
-  const value = readLaunchOnLoginEnabled();
-  launchOnLoginCache = { value, at: Date.now() };
-  return value;
-}
-
-function readLaunchOnLoginEnabled(): boolean {
   try {
-    // Entry must exist in Run key
-    const exists = runPowerShellCommand(`(Get-ItemProperty -Path '${REG_PATH}' -Name '${VALUE_NAME}' -ErrorAction SilentlyContinue).${VALUE_NAME}`);
-    if (!exists) return false;
-    // Check StartupApproved — if present, first byte must be 0x02 (enabled)
-    const approved = runPowerShellCommand(`$v = (Get-ItemProperty -Path '${APPROVED_PATH}' -Name '${VALUE_NAME}' -ErrorAction SilentlyContinue).${VALUE_NAME}; if ($v) { $v[0] } else { 2 }`);
-    return approved !== "3";
+    if (!regGetString(RUN_KEY, VALUE_NAME)) return false;
+    // Task Manager marks a disabled entry with first byte 0x03 in StartupApproved.
+    const approved = regGetBinary(APPROVED_KEY, VALUE_NAME);
+    return !approved || approved[0] !== 0x03;
   } catch {
     return false;
   }
@@ -47,17 +39,15 @@ function readLaunchOnLoginEnabled(): boolean {
 
 export function enableLaunchOnLogin(exeDir: string): void {
   if (!isLaunchOnLoginSupported()) return;
-  const exePath = join(exeDir, "raceiq.exe");
-  runPowerShellCommand(`Set-ItemProperty -Path '${REG_PATH}' -Name '${VALUE_NAME}' -Value '"${exePath}"'`);
-  runPowerShellCommand(`$bytes = [byte[]](${ENABLED_BYTES} -split ',' | ForEach-Object { [Convert]::ToByte($_.Trim(), 16) }); New-ItemProperty -Path '${APPROVED_PATH}' -Name '${VALUE_NAME}' -Value $bytes -PropertyType Binary -Force | Out-Null`);
-  launchOnLoginCache = { value: true, at: Date.now() };
+  regSetString(RUN_KEY, VALUE_NAME, `"${join(exeDir, "raceiq.exe")}"`);
+  // Clear a previous "disabled" mark so Windows treats the entry as enabled.
+  regDeleteValue(APPROVED_KEY, VALUE_NAME);
 }
 
 export function disableLaunchOnLogin(): void {
   if (!isLaunchOnLoginSupported()) return;
-  // Keep the Run entry but mark as disabled in StartupApproved (same as Task Manager disable)
-  runPowerShellCommand(`$bytes = [byte[]](${DISABLED_BYTES} -split ',' | ForEach-Object { [Convert]::ToByte($_.Trim(), 16) }); New-ItemProperty -Path '${APPROVED_PATH}' -Name '${VALUE_NAME}' -Value $bytes -PropertyType Binary -Force | Out-Null`);
-  launchOnLoginCache = { value: false, at: Date.now() };
+  regDeleteValue(RUN_KEY, VALUE_NAME);
+  regDeleteValue(APPROVED_KEY, VALUE_NAME);
 }
 
 export function getLaunchOnLoginExeDir(): string {

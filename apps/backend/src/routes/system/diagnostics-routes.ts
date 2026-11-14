@@ -147,13 +147,12 @@ export const diagnosticsRoutes = new Hono()
       lapCount = Number(lapResult.rows[0]?.count) || 0;
     } catch {}
 
-
-    // Hardware & network diagnostics (Windows — all via PowerShell)
-    let cpuUsagePercent: number | null = null;
-    let gpuName: string | null = null;
-    let gpuUsagePercent: number | null = null;
+    // Hardware & network diagnostics (no child processes; see fork note below)
+    const cpuUsagePercent: number | null = null;
+    const gpuName: string | null = null;
+    const gpuUsagePercent: number | null = null;
     let networkType: string | null = null;
-    let linkSpeedMbps: number | null = null;
+    const linkSpeedMbps: number | null = null;
 
     // Detect network type from OS network interfaces as fallback
     const nets = networkInterfaces();
@@ -167,85 +166,14 @@ export const diagnosticsRoutes = new Hono()
       }
     }
 
-    if (platform() === "win32") {
-      const ps = (cmd: string) => {
-        try {
-          const proc = Bun.spawnSync(["powershell", "-NoProfile", "-Command", cmd]);
-          return proc.stdout.toString().trim();
-        } catch { return ""; }
-      };
+    // Fork note: upstream probed CPU/GPU load, network adapter, power plan and
+    // disk media type with ~8 hidden PowerShell processes in a row. That burst
+    // of system reconnaissance is what info-stealer heuristics look for, so
+    // these optional fields stay null on Windows.
+    const powerMode: string | null = null;
+    const installDriveType: string | null = null;
+    const dataDriveType: string | null = null;
 
-      // CPU usage
-      const cpuOut = ps("(Get-CimInstance Win32_Processor).LoadPercentage");
-      const cpuPct = parseInt(cpuOut, 10);
-      if (!Number.isNaN(cpuPct)) cpuUsagePercent = cpuPct;
-
-      // GPU name (first discrete GPU, skip integrated)
-      const gpuOut = ps("Get-CimInstance Win32_VideoController | Select-Object -ExpandProperty Name");
-      if (gpuOut) {
-        const gpus = gpuOut.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
-        gpuName = gpus.find((g) => !(/integrated|radeon.*graphics$/i.test(g))) ?? gpus[0] ?? null;
-      }
-
-      // GPU usage — try nvidia-smi, fall back to perf counter
-      const nvOut = ps("nvidia-smi --query-gpu=utilization.gpu --format=csv,noheader,nounits");
-      const nvPct = parseInt(nvOut, 10);
-      if (!Number.isNaN(nvPct)) {
-        gpuUsagePercent = nvPct;
-      } else {
-        const counterOut = ps("(Get-Counter '\\GPU Engine(*engtype_3D)\\Utilization Percentage').CounterSamples | Measure-Object -Property CookedValue -Sum | Select-Object -ExpandProperty Sum");
-        const cPct = Math.round(parseFloat(counterOut));
-        if (!Number.isNaN(cPct)) gpuUsagePercent = cPct;
-      }
-
-      // Network adapter name + link speed
-      const netOut = ps("Get-NetAdapter | Where-Object {$_.Status -eq 'Up'} | Select-Object -First 1 Name,LinkSpeed | Format-List");
-      const netNameMatch = netOut.match(/Name\s*:\s*(.+)/);
-      if (netNameMatch) {
-        const n = netNameMatch[1].trim().toLowerCase();
-        networkType = n.includes("wi-fi") || n.includes("wifi") || n.includes("wireless")
-          ? "WiFi" : "Ethernet";
-      }
-      const linkMatch = netOut.match(/LinkSpeed\s*:\s*(.+)/);
-      if (linkMatch) {
-        const raw = linkMatch[1].trim();
-        const m = raw.match(/([\d.]+)\s*(Gbps|Mbps)/i);
-        if (m) linkSpeedMbps = m[2].toLowerCase() === "gbps" ? Math.round(parseFloat(m[1]) * 1000) : Math.round(parseFloat(m[1]));
-      }
-    }
-
-    // Power mode
-    let powerMode: string | null = null;
-    if (platform() === "win32") {
-      const ps = (cmd: string) => {
-        try {
-          const proc = Bun.spawnSync(["powershell", "-NoProfile", "-Command", cmd]);
-          return proc.stdout.toString().trim();
-        } catch { return ""; }
-      };
-
-      const powerOut = ps("powercfg /getactivescheme");
-      // Output format: "GUID: {guid}  (Scheme Name)"
-      const schemeMatch = powerOut.match(/\(([^)]+)\)\s*$/);
-      if (schemeMatch) {
-        powerMode = schemeMatch[1].trim();
-      }
-    }
-
-    // Drive types for install and data directories
-    let installDriveType: string | null = null;
-    let dataDriveType: string | null = null;
-    if (platform() === "win32") {
-      const driveType = (dir: string) => {
-        try {
-          const proc = Bun.spawnSync(["powershell", "-NoProfile", "-Command",
-            `try{$dl=([System.IO.Path]::GetPathRoot('${dir.replace(/'/g, "''")}'))[0];$p=Get-Partition -DriveLetter $dl -ErrorAction Stop;$d=Get-PhysicalDisk -DeviceNumber $p.DiskNumber -ErrorAction Stop;$d.MediaType}catch{'Unknown'}`]);
-          return proc.stdout.toString().trim() || null;
-        } catch { return null; }
-      };
-      installDriveType = driveType(ROOT_DIR);
-      dataDriveType = driveType(DB_DIR);
-    }
 
     const diagnostics = {
       app: {

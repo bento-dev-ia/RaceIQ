@@ -4,12 +4,6 @@ import { KNOWN_GAME_IDS } from "@raceiq/shared/games/ids";
  * Copies shared/data CSV/JSON/SVG contents directly into dist/data and preserves
  * other shared umbrella names beneath dist/data. Used by production builds so
  * compiled code sees the same logical data roots as source code.
- *
- * Also copies server/runtime/platform/credstore.ps1 next to the binary (dist/credstore.ps1):
- * server/runtime/platform/keystore.ts resolves it relative to process.execPath when compiled,
- * and it can't be embedded in the binary because PowerShell needs a real file
- * on disk for `-File`. This script is the one choke point every build path
- * (packages/tooling-build/src/build/build.ts, build-installer.ts, release.yml) runs through.
  */
 import { cpSync, mkdirSync, readdirSync } from "node:fs";
 import path from "node:path";
@@ -77,10 +71,4 @@ for (const gameId of KNOWN_GAME_IDS) {
 }
 
 console.log(`Copied ${count} data files → ${DIST}`);
-
-// Credential-store PowerShell helper — must sit next to the compiled binary
-const credSrc = path.join(ROOT, "server", "runtime", "platform", "credstore.ps1");
-const credDst = path.resolve(ROOT, "dist", "credstore.ps1");
-mkdirSync(path.dirname(credDst), { recursive: true });
-cpSync(credSrc, credDst);
-console.log(`Copied credstore.ps1 → ${credDst}`);
+// No credstore.ps1 any more: Windows secrets use in-process DPAPI (keystore.ts).
