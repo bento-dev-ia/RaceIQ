@@ -36,7 +36,7 @@ export interface EngineerCorner {
   /** Official turn numbers covered by this segment. */
   turns?: number[];
   /** Published-guide knowledge for this corner, when the track has a guide. */
-  guide?: { brake: string; gear: string; turnIn?: string; tip: string };
+  guide?: import("./track-knowledge").CornerGuide;
 }
 
 /** Lap time as a function of distance inside a corner segment (relative to segment start). */

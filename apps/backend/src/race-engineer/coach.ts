@@ -5,13 +5,16 @@ import {
   NO_REFERENCE_PHRASE,
   REFERENCE_READY_PHRASE,
   briefingPhrase,
+  guidedPreCornerVariants,
   guidePhrase,
   lapSummaryPhrase,
   postCornerPhrase,
   preCornerPhrase,
 } from "./phrases-pt-br";
 import { CornerReferenceSet } from "./reference";
-import type { CornerIssue, CornerPass, EngineerCallout, EngineerCorner, EngineerSample } from "./types";
+import type { CornerIssue, CornerPass, EngineerCallout, EngineerCorner, EngineerSample, IssueKind } from "./types";
+
+const ISSUE_KINDS: readonly IssueKind[] = ["brake-early", "brake-late", "brake-harder", "brake-softer", "trail-brake", "min-speed-low", "gear", "throttle-late", "turn-in-early", "turn-in-late", "steer-too-much", "steer-too-little"];
 
 export interface CoachFrame extends EngineerSample {
   lapNumber: number;
@@ -52,11 +55,15 @@ interface Pending {
   lap: number;
 }
 
-/** A focus corner's tip becomes sayable once its silence zone is this close. */
-const PRE_CORNER_LOOKAHEAD_M = 1500;
+/**
+ * A focus corner's tip becomes sayable once its silence zone is this close.
+ * Short on purpose: said right after the previous corner, the tip is about a
+ * corner that is still far away and gets forgotten (or talks over the exit).
+ */
+const PRE_CORNER_LOOKAHEAD_M = 450;
 const MAX_COACHABLE_DELTA_S = 2;
 /** Briefings for non-focus corners open this close to the corner's silence zone. */
-const BRIEFING_LOOKAHEAD_M = 700;
+const BRIEFING_LOOKAHEAD_M = 450;
 
 /** Rough TTS duration in seconds for a pt-BR phrase at rate ~1.1 (≈3 words/s). */
 export function estimateSpeechSeconds(text: string): number {
@@ -316,10 +323,8 @@ export class RaceEngineerCoach {
       const ref = this.reference.get(key);
       if (!attempt || !ref) continue;
       const issue = attempt.issues[0];
-      let text = preCornerPhrase(this.corners[index].spokenName, ref, issue);
-      // A visual turn-in reference from the track guide beats a number when the turn-in is what's wrong.
-      const turnInCue = this.corners[index].guide?.turnIn;
-      if (turnInCue && (issue?.kind === "turn-in-early" || issue?.kind === "turn-in-late")) text = `${text.slice(0, -1)}, ${turnInCue}.`;
+      // With a track guide its gear / apex / board are the anchor and the tip is checked against them.
+      const text = preCornerPhrase(this.corners[index].spokenName, ref, issue, this.corners[index].guide);
       this.sentPre.add(sentKey);
       this.enqueue({ kind: "pre-corner", priority: 4, cornerKey: key, text }, zoneStart, this.currentLap);
     }
@@ -350,13 +355,8 @@ export class RaceEngineerCoach {
     this.sentPre.add(sentKey);
     // The guide's key tip is said once per session per corner; after that, only the numbers.
     const firstTime = !this.guideTipSaid.has(corner.key);
-    let text: string;
-    if (ref) {
-      text = briefingPhrase(corner.spokenName, ref);
-      if (corner.guide?.tip && firstTime) text += ` ${corner.guide.tip.charAt(0).toUpperCase()}${corner.guide.tip.slice(1)}.`;
-    } else {
-      text = guidePhrase(corner.spokenName, corner.guide!, firstTime);
-    }
+    // The guide is the truth for gear, apex speed and board; own laps only when there is no guide.
+    const text = corner.guide ? guidePhrase(corner.spokenName, corner.guide, firstTime) : briefingPhrase(corner.spokenName, ref!);
     if (corner.guide) this.guideTipSaid.add(corner.key);
     this.enqueue({ kind: "pre-corner", priority: 1, cornerKey: corner.key, text }, zoneStart, this.currentLap);
   }
@@ -391,14 +391,16 @@ export class RaceEngineerCoach {
   plannedPhrases(): string[] {
     const out: string[] = [ENGINEER_ON_PHRASE, NO_REFERENCE_PHRASE, REFERENCE_READY_PHRASE];
     for (const corner of this.corners) {
-      const ref = this.reference.get(corner.key);
-      if (!ref) {
-        if (corner.guide) out.push(guidePhrase(corner.spokenName, corner.guide, true), guidePhrase(corner.spokenName, corner.guide, false));
-        continue;
+      // Guided corners have a closed set of phrases: synthesise all of them up front.
+      if (corner.guide) {
+        out.push(guidePhrase(corner.spokenName, corner.guide, true), guidePhrase(corner.spokenName, corner.guide, false));
+        out.push(...guidedPreCornerVariants(corner.spokenName, corner.guide));
       }
+      const ref = this.reference.get(corner.key);
+      if (!ref) continue;
       const attempt = this.attempts.get(corner.key);
-      if (this.focus.includes(corner.key) && attempt) out.push(preCornerPhrase(corner.spokenName, ref, attempt.issues[0]));
-      else out.push(briefingPhrase(corner.spokenName, ref));
+      if (this.focus.includes(corner.key) && attempt) out.push(preCornerPhrase(corner.spokenName, ref, attempt.issues[0], corner.guide));
+      else if (!corner.guide) out.push(briefingPhrase(corner.spokenName, ref));
       if (attempt && attempt.deltaS > 0) {
         for (const d of [-0.1, 0, 0.1]) {
           const delta = Math.max(0.1, attempt.deltaS + d);
@@ -406,8 +408,11 @@ export class RaceEngineerCoach {
         }
       }
     }
-    for (let tenths = 1; tenths <= 5; tenths++) out.push(postCornerPhrase(-tenths / 10, undefined));
-    return out;
+    for (let tenths = 1; tenths <= 5; tenths++) {
+      out.push(postCornerPhrase(-tenths / 10, undefined), postCornerPhrase(tenths / 10, undefined));
+      for (const kind of ISSUE_KINDS) out.push(postCornerPhrase(tenths / 10, { kind }));
+    }
+    return [...new Set(out)];
   }
 
   private enqueue(callout: EngineerCallout, expiresAtM: number, lap: number): void {

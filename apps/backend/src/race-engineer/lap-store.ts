@@ -32,6 +32,21 @@ export function loadEngineerLaps(key: string): EngineerSample[][] {
   }
 }
 
+/** Drop the stored reference lap with this lap time (± 5 ms). Returns whether one was removed. */
+export function removeEngineerLap(key: string, lapTimeS: number): boolean {
+  try {
+    const laps = JSON.parse(readFileSync(fileFor(key), "utf8")) as StoredLap[];
+    const kept = laps.filter((lap) => Math.abs(lap.lapTimeS - lapTimeS) > 0.005);
+    if (kept.length === laps.length) return false;
+    const file = fileFor(key);
+    writeFileSync(`${file}.tmp`, JSON.stringify(kept));
+    renameSync(`${file}.tmp`, file);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** Keep the fastest KEEP laps for this key. */
 export function saveEngineerLap(key: string, samples: readonly EngineerSample[], lapTimeS: number): void {
   if (!(lapTimeS > 0) || samples.length < 50) return;

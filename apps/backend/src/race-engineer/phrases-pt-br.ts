@@ -1,3 +1,4 @@
+import type { CornerGuide } from "./track-knowledge";
 import type { CornerIssue, CornerReference, IssueKind } from "./types";
 
 /** Short spoken phrases in Brazilian Portuguese. Kept terse on purpose: the driver is busy. */
@@ -53,8 +54,11 @@ const CAUSE: Record<IssueKind, string> = {
 /**
  * "La Source, segunda, freia nos 100 metros. Solta o freio devagar até o ápice."
  * Gear and brake marker are the anchor; the tip is the one thing to change.
+ * With a track guide, its gear, apex speed and board are the anchor instead,
+ * and a brake point that is off is corrected against the board, not in metres.
  */
-export function preCornerPhrase(spokenName: string, ref: CornerReference, issue: CornerIssue | undefined): string {
+export function preCornerPhrase(spokenName: string, ref: CornerReference, issue: CornerIssue | undefined, guide?: CornerGuide): string {
+  if (guide) return guidedPreCornerPhrase(spokenName, guide, issue);
   const parts: string[] = [spokenName];
   if (ref.gear > 0 && issue?.kind !== "gear") parts.push(gearWord(ref.gear));
   const marker = brakeMarker(ref);
@@ -62,6 +66,45 @@ export function preCornerPhrase(spokenName: string, ref: CornerReference, issue:
   let text = parts.join(", ");
   if (issue) text += `. ${capitalize(TIP[issue.kind](issue))}`;
   return `${text}.`;
+}
+
+function guidedPreCornerPhrase(spokenName: string, guide: CornerGuide, issue: CornerIssue | undefined): string {
+  const parts: string[] = [spokenName];
+  if (guide.gear > 0) parts.push(gearWord(guide.gear));
+  if (guide.apexKmh) parts.push(String(guide.apexKmh));
+  if (guide.brake) parts.push(`freia ${guide.brake}`);
+  let tip: string | null = null;
+  if (issue) {
+    switch (issue.kind) {
+      case "brake-early":
+        tip = guide.brake ? "espera a referência pra frear" : TIP[issue.kind](issue);
+        break;
+      case "brake-late":
+        tip = guide.brake ? "freia mais cedo, na referência" : TIP[issue.kind](issue);
+        break;
+      case "gear":
+        tip = guide.gear > 0 ? `usa a ${gearWord(guide.gear)}` : null;
+        break;
+      case "min-speed-low":
+        tip = guide.apexKmh ? `leva mais velocidade, ${guide.apexKmh} no ápice` : TIP[issue.kind](issue);
+        break;
+      case "turn-in-early":
+      case "turn-in-late":
+        tip = guide.turnIn ?? TIP[issue.kind](issue);
+        break;
+      default:
+        tip = TIP[issue.kind](issue);
+    }
+  }
+  let text = `${parts.join(", ")}.`;
+  if (tip) text += ` ${capitalize(tip)}.`;
+  return text;
+}
+
+/** Every pre-corner phrase a guided corner can produce (to synthesise ahead of time). */
+export function guidedPreCornerVariants(spokenName: string, guide: CornerGuide): string[] {
+  const kinds: IssueKind[] = ["brake-early", "brake-late", "brake-harder", "brake-softer", "trail-brake", "min-speed-low", "gear", "throttle-late", "turn-in-early", "turn-in-late", "steer-too-much", "steer-too-little"];
+  return kinds.map((kind) => guidedPreCornerPhrase(spokenName, guide, { kind }));
 }
 
 /**
@@ -77,11 +120,15 @@ export function briefingPhrase(spokenName: string, ref: CornerReference): string
   return `${parts.join(", ")}.`;
 }
 
-/** From a published track guide, before the driver has a reference: "Parabolica, terceira, freia na placa de 100." */
-export function guidePhrase(spokenName: string, guide: { brake: string; gear: string; tip: string }, withTip: boolean): string {
+/** From the track guide: "Curva 4, segunda, 83, freia na placa de 150." */
+export function guidePhrase(spokenName: string, guide: CornerGuide, withTip: boolean): string {
   const parts = [spokenName];
-  if (guide.gear) parts.push(guide.gear);
-  parts.push(guide.brake ? `freia ${guide.brake}` : "pé embaixo");
+  if (guide.flat) parts.push("pé embaixo");
+  else {
+    if (guide.gear > 0) parts.push(gearWord(guide.gear));
+    if (guide.apexKmh) parts.push(String(guide.apexKmh));
+    if (guide.brake) parts.push(`freia ${guide.brake}`);
+  }
   let text = `${parts.join(", ")}.`;
   if (withTip && guide.tip) text += ` ${capitalize(guide.tip)}.`;
   return text;
@@ -131,11 +178,29 @@ export function formatLapTime(seconds: number): string {
   return `${min} ${min === 1 ? "minuto" : "minutos"}, ${tail}`;
 }
 
-/** Spoken corner name from segment data: the real name when there is one, else "Curva N". */
+/**
+ * Only corners famous by name keep it on the radio (short form); everything
+ * else is just its number, which is quicker to say and to place.
+ */
+const FAMOUS: readonly [RegExp, string][] = [
+  [/lesmo\s*1/i, "Lesmo 1"],
+  [/lesmo\s*2/i, "Lesmo 2"],
+  [/ascari/i, "Ascari"],
+  [/parab[oó]lica/i, "Parabólica"],
+  [/la source/i, "La Source"],
+  [/eau rouge/i, "Eau Rouge"],
+  [/raidillon/i, "Raidillon"],
+  [/pouhon/i, "Pouhon"],
+  [/blanchimont/i, "Blanchimont"],
+  [/bus stop/i, "Bus Stop"],
+];
+
+/** Spoken corner name from segment data: a famous name when it has one, else "Curva N". */
 export function spokenCornerName(name: string | undefined, numbers: readonly number[], fallbackIndex: number): string {
   const trimmed = (name ?? "").trim();
+  for (const [pattern, short] of FAMOUS) if (pattern.test(trimmed)) return short;
   const isToken = /^T\??$/.test(trimmed) || /^T\d+(?:[-,/]\d+)*$/.test(trimmed) || trimmed === "";
-  if (!isToken) return trimmed;
+  if (!isToken && numbers.length === 0) return trimmed;
   if (numbers.length > 1) return `Curva ${numbers[0]} e ${numbers[numbers.length - 1]}`;
   if (numbers.length === 1) return `Curva ${numbers[0]}`;
   const fromToken = /^T(\d+)/.exec(trimmed);

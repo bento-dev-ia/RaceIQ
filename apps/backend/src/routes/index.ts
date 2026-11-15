@@ -22,7 +22,7 @@ import { miscRoutes } from "./system/index";
 import { cacheRoutes } from "./cache-routes";
 import { devRoutes } from "./dev/index";
 import { dashboardRoutes } from "./dashboard-routes";
-import { raceEngineerRoutes } from "./race-engineer-routes";
+import { raceEngineerRoutes, raceEngineerSectorRoutes } from "./race-engineer-routes";
 
 const app = new Hono()
   .use("/*", async (c, next) => {
@@ -50,6 +50,7 @@ const app = new Hono()
   .route("/", chatRunRoutes)
   .route("/", dashboardRoutes)
   .route("/", raceEngineerRoutes)
+  .route("/", raceEngineerSectorRoutes)
   .route("/", createSessionRoutes(isSessionIdentityInCatalog))
   .route("/", trackRoutes)
   .route("/", carRoutes)

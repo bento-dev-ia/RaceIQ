@@ -2,10 +2,14 @@ import { isDevTelemetryPacketMessageV1, isDevTelemetrySubscriptionMessageV1, isL
 import { devTelemetryStore } from "../stores/dev-telemetry";
 import { telemetryStore } from "../stores/telemetry";
 import { decodeLmuPacket, isLmuLiveContextWire } from "@raceiq/shared/telemetry/lmu-context";
-import { isRaceEngineerCallout, speakRaceEngineer } from "./race-engineer-voice";
+import { isRaceEngineerCallout, isRaceEngineerPreload, preloadRaceEngineer, speakRaceEngineer } from "./race-engineer-voice";
 export function handleWebSocketMessage(data: unknown): boolean {
   if (isRaceEngineerCallout(data)) {
     speakRaceEngineer(data.text);
+    return false;
+  }
+  if (isRaceEngineerPreload(data)) {
+    preloadRaceEngineer(data.texts);
     return false;
   }
   if (data !== null && typeof data === "object" && "type" in data && data.type === "opponent-recording-failed") {

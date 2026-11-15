@@ -12,7 +12,8 @@ import { readAccGraphics, readAccTrackLength } from "./acc-graphics";
 import { spokenCornerName } from "./phrases-pt-br";
 import { RaceEngineerSession } from "./session";
 import { resolveTrackLengthM } from "./track-length";
-import { loadEngineerLaps, saveEngineerLap } from "./lap-store";
+import { loadEngineerLaps, removeEngineerLap, saveEngineerLap } from "./lap-store";
+import { SectorTracker, type SectorsPayload } from "./sectors";
 import { prewarmSpeech, setEngineerVoiceId } from "./tts";
 import { guideForTrack, guideForTurns } from "./track-knowledge";
 import type { EngineerCallout, EngineerCorner, EngineerSample } from "./types";
@@ -96,6 +97,8 @@ export interface RaceEngineerIdealPayload {
     turnInM: number;
     gear: number;
     minKmh: number;
+    /** The track guide's brake reference, spoken form ("freia na placa de 150"). */
+    brakeCue: string | null;
     peakBrakePct: number | null;
     trailBraking: boolean | null;
   }[];
@@ -138,8 +141,10 @@ export function getRaceEngineerIdeal(knownVersion: string | null): RaceEngineerI
         brakeStartM: ref.brakeStartM,
         brakeBeforeTurnInM: ref.brakeBeforeTurnInM === null ? null : Math.round(ref.brakeBeforeTurnInM),
         turnInM: ref.turnInM,
-        gear: ref.gear,
-        minKmh: Math.round(ref.minKmh),
+        // Track guide numbers win over the driver's own laps.
+        gear: corner.guide && corner.guide.gear > 0 ? corner.guide.gear : ref.gear,
+        minKmh: corner.guide?.apexKmh ?? Math.round(ref.minKmh),
+        brakeCue: corner.guide ? (corner.guide.flat ? "pé embaixo" : corner.guide.brake ? `freia ${corner.guide.brake}` : "sem freio") : null,
         peakBrakePct: Number.isFinite(ref.peakBrake) ? Math.round(ref.peakBrake * 100) : null,
         trailBraking: ref.trailBraking,
       }];
@@ -147,8 +152,48 @@ export function getRaceEngineerIdeal(knownVersion: string | null): RaceEngineerI
   };
 }
 
+// ── Sector history ───────────────────────────────────────────────────────
+let sectors: SectorTracker | null = null;
+
+function feedSectors(packet: Readonly<TelemetryPacket>, session: LiveFrameSession, nowMs: number): void {
+  const storeKey = `${session.gameId}-${session.carId}-${session.trackId}`;
+  if (sectors?.key !== storeKey) sectors = new SectorTracker(storeKey);
+  const acc = packet.acc;
+  if (!acc || typeof acc.currentSectorIndex !== "number") return;
+  sectors.feed({
+    lapNumber: packet.LapNumber,
+    currentLapS: packet.CurrentLap,
+    lastLapS: packet.LastLap,
+    sectorIndex: acc.currentSectorIndex,
+    isValidLap: acc.isValidLap ?? null,
+    pitStatus: String(acc.pitStatus ?? "out"),
+  }, nowMs);
+}
+
+/** Recent laps with sector colours, for the overlay and the app. */
+export function getRaceEngineerSectors(limit: number): SectorsPayload | null {
+  overlayPolledAtMs = Date.now();
+  return sectors?.view(limit) ?? null;
+}
+
+/**
+ * Delete a lap from the sector history (e.g. a telemetry glitch with an
+ * impossible sector). If it was one of the engineer's reference laps, it is
+ * dropped from there too and the reference is rebuilt.
+ */
+export function deleteRaceEngineerLap(id: string): boolean {
+  const removed = sectors?.remove(id);
+  if (!sectors || !removed) return false;
+  if (removeEngineerLap(sectors.key, removed.lapMs / 1000)) {
+    console.log(`[RaceEngineer] reference lap ${(removed.lapMs / 1000).toFixed(3)} removed — rebuilding the reference`);
+    ctx = null;
+  }
+  return true;
+}
+
 function onFrame(packet: Readonly<TelemetryPacket>, session: LiveFrameSession | null): void {
   if (!(enabled || overlayActive()) || !session || !SUPPORTED_GAMES.has(packet.gameId)) return;
+  feedSectors(packet, session, Date.now());
   const key = `${session.gameId}|${session.carId}|${session.trackId}`;
   if (ctx?.key !== key) {
     const next: Context = { key };
@@ -172,7 +217,11 @@ function onFrame(packet: Readonly<TelemetryPacket>, session: LiveFrameSession | 
   const lapKey = `${packet.LapNumber}|${engineer.coach.reference.version}`;
   if (enabled && lapKey !== lastPrewarmKey) {
     lastPrewarmKey = lapKey;
-    prewarmSpeech(engineer.coach.plannedPhrases());
+    const phrases = engineer.coach.plannedPhrases();
+    // The page keeps the clips decoded in memory: what is on disk now, and the rest once generated.
+    const announce = () => wsManager.broadcastNotification({ type: "race-engineer-preload", texts: phrases });
+    announce();
+    prewarmSpeech(phrases, announce);
   }
 }
 

@@ -40,7 +40,12 @@ const SCALE = Number(arg("scale") ?? (await fetchPlacement())?.scale ?? 1) || 1;
 const S = (v: number) => Math.round(v * SCALE);
 const TYRE_W = S(100); // 2×2 tyre/brake panel on the right
 const W = S(400) + TYRE_W + S(6);
-const H = S(196);
+/** Inputs/targets part; the sector history sits below it. */
+const MAIN_H = S(196);
+const SECTOR_ROWS = 5; // recent laps (+ the lap in progress)
+const ROW_H = S(19);
+const SECTORS_H = S(8) + (SECTOR_ROWS + 1) * ROW_H;
+const H = MAIN_H + SECTORS_H;
 const PAST_S = 5;
 const FUTURE_S = 1.2;
 const FPS = 60;
@@ -132,14 +137,25 @@ const hwnd = U.CreateWindowExW(
 );
 if (!hwnd) throw new Error("CreateWindowExW failed");
 
-// Dragging: while editable, report the whole box as a caption so Windows moves it natively.
+// Dragging: while editable, report the whole box as a caption so Windows moves it natively —
+// except the ✕ buttons of the sector history, which are clickable (delete a glitched lap).
 let editable = false;
-const WM_NCHITTEST = 0x84, HTCAPTION = 2, WM_EXITSIZEMOVE = 0x232;
+const WM_NCHITTEST = 0x84, HTCAPTION = 2, HTCLIENT = 1, WM_EXITSIZEMOVE = 0x232, WM_LBUTTONUP = 0x202;
 const rect = new Int32Array(4);
 let originalProc = 0n;
+const lowWord = (v: bigint) => Number(BigInt.asIntN(16, v & 0xffffn));
+const highWord = (v: bigint) => Number(BigInt.asIntN(16, (v >> 16n) & 0xffffn));
 const wndProc = new JSCallback(
   (h: number, msg: number, wParam: bigint, lParam: bigint): bigint => {
-    if (msg === WM_NCHITTEST && editable) return BigInt(HTCAPTION);
+    if (msg === WM_NCHITTEST && editable) {
+      U.GetWindowRect(hwnd, ptr(rect));
+      return BigInt(buttonAt(lowWord(lParam) - rect[0], highWord(lParam) - rect[1]) ? HTCLIENT : HTCAPTION);
+    }
+    if (msg === WM_LBUTTONUP && editable) {
+      const button = buttonAt(lowWord(lParam), highWord(lParam));
+      if (button) void deleteLap(button.id);
+      return 0n;
+    }
     if (msg === WM_EXITSIZEMOVE) {
       U.GetWindowRect(hwnd, ptr(rect));
       savePosition(rect[0], rect[1]);
@@ -249,7 +265,7 @@ function readLive(nowMs: number): Live | null {
 }
 
 // ── Ideal + corner targets from RaceIQ ───────────────────────────────────
-interface CornerTarget { name: string; startM: number; brakeStartM: number | null; brakeBeforeTurnInM: number | null; turnInM: number; gear: number; minKmh: number; peakBrakePct: number | null; trailBraking: boolean | null }
+interface CornerTarget { name: string; startM: number; brakeStartM: number | null; brakeBeforeTurnInM: number | null; turnInM: number; gear: number; minKmh: number; brakeCue?: string | null; peakBrakePct: number | null; trailBraking: boolean | null }
 interface Ideal { version: string; trackLengthM: number; stepM: number; throttle: number[]; brake: number[]; steer: number[]; corners: CornerTarget[] }
 let ideal: Ideal | null = null;
 let idealWarned = false;
@@ -296,6 +312,36 @@ function nextCorner(d: number): { corner: CornerTarget; toBrakeM: number; brakin
     }
   }
   return null;
+}
+
+// ── Sector history from RaceIQ ───────────────────────────────────────────
+type SectorColor = "purple" | "green" | "yellow" | "invalid" | "suspect";
+interface SectorLap { id: string; lapNumber: number; lapMs: number; sectorsMs: number[]; colors: SectorColor[]; lapColor: SectorColor; suspect: boolean }
+interface Sectors { laps: SectorLap[]; current: { lapNumber: number; sectorsMs: (number | null)[]; colors: (SectorColor | null)[] } | null }
+let sectorData: Sectors | null = null;
+async function pollSectors(): Promise<void> {
+  try {
+    const res = await fetch(`${BASE_URL}/api/race-engineer/sectors?limit=${SECTOR_ROWS}`, { signal: AbortSignal.timeout(3000) });
+    const body = (await res.json()) as { available: boolean } & Partial<Sectors>;
+    sectorData = body.available ? { laps: body.laps ?? [], current: body.current ?? null } : null;
+  } catch {
+    /* RaceIQ not reachable: the ideal poll already warns */
+  }
+}
+async function deleteLap(id: string): Promise<void> {
+  try {
+    const res = await fetch(`${BASE_URL}/api/race-engineer/sectors/${encodeURIComponent(id)}`, { method: "DELETE", signal: AbortSignal.timeout(4000) });
+    console.log(`[Overlay] lap ${id} ${res.ok ? "deleted" : `not deleted (HTTP ${res.status})`}`);
+  } catch (error) {
+    console.warn("[Overlay] could not delete lap:", error instanceof Error ? error.message : error);
+  }
+  await pollSectors();
+}
+
+/** Clickable ✕ boxes drawn this frame (window coordinates). */
+let deleteButtons: { x: number; y: number; w: number; h: number; id: string }[] = [];
+function buttonAt(x: number, y: number): { id: string } | null {
+  return deleteButtons.find((b) => x >= b.x && x < b.x + b.w && y >= b.y && y < b.y + b.h) ?? null;
 }
 
 // ── History ──────────────────────────────────────────────────────────────
@@ -389,8 +435,8 @@ const STRIP_H = S(46); // two text lines
 const GRAPH_X0 = PAD;
 const TYRE_X0 = W - PAD - TYRE_W;
 const GRAPH_X1 = TYRE_X0 - S(6) - PAD - BAR_W * 2 - S(4);
-const PEDAL_Y0 = PAD + STRIP_H, PEDAL_Y1 = PEDAL_Y0 + Math.round((H - PEDAL_Y0 - PAD) * 0.66);
-const STEER_Y0 = PEDAL_Y1 + S(6), STEER_Y1 = H - PAD;
+const PEDAL_Y0 = PAD + STRIP_H, PEDAL_Y1 = PEDAL_Y0 + Math.round((MAIN_H - PEDAL_Y0 - PAD) * 0.66);
+const STEER_Y0 = PEDAL_Y1 + S(6), STEER_Y1 = MAIN_H - PAD;
 const NOW_X = GRAPH_X0 + Math.round((GRAPH_X1 - GRAPH_X0) * (PAST_S / (PAST_S + FUTURE_S)));
 const PX_PER_S = (GRAPH_X1 - GRAPH_X0) / (PAST_S + FUTURE_S);
 const pedalY = (v: number) => PEDAL_Y1 - Math.max(0, Math.min(1, v)) * (PEDAL_Y1 - PEDAL_Y0);
@@ -423,8 +469,10 @@ function drawStrip(live: Live): void {
 
   // Line 2: the fixed marker on the left, the live cue on the right.
   const y2 = y + S(21);
-  const marker = corner.brakeBeforeTurnInM === null ? "sem freio" : `freia a ${roundMarker(corner.brakeBeforeTurnInM)} m da curva`;
-  drawText(marker, PAD, y2, small, corner.brakeBeforeTurnInM === null ? GREEN : GREY);
+  // The track guide's board ("freia na placa de 150") when there is one, else the measured marker.
+  const marker = corner.brakeCue ?? (corner.brakeBeforeTurnInM === null ? "sem freio" : `freia a ${roundMarker(corner.brakeBeforeTurnInM)} m da curva`);
+  const noBrake = corner.brakeCue ? !corner.brakeCue.startsWith("freia") : corner.brakeBeforeTurnInM === null;
+  drawText(fitText(marker, Math.round(W * 0.62), small), PAD, y2, small, noBrake ? GREEN : GREY);
   let cue = "";
   let cueColor: Rgb = GREY;
   if (braking && corner.brakeStartM !== null) {
@@ -483,6 +531,64 @@ function drawTyres(live: Live): void {
   }
 }
 
+const PURPLE: Rgb = [150, 80, 255], DARK: Rgb = [18, 18, 18];
+const SECTOR_FILL: Record<SectorColor, { fill: Rgb; alpha: number; text: Rgb }> = {
+  purple: { fill: PURPLE, alpha: 0.85, text: WHITE },
+  green: { fill: GREEN, alpha: 0.8, text: WHITE },
+  yellow: { fill: YELLOW, alpha: 0.85, text: DARK },
+  invalid: { fill: GREY, alpha: 0.18, text: GREY },
+  suspect: { fill: RED, alpha: 0.3, text: WHITE },
+};
+
+function formatLapMs(ms: number): string {
+  const min = Math.floor(ms / 60000);
+  return `${min}:${((ms - min * 60000) / 1000).toFixed(3).padStart(6, "0")}`;
+}
+
+/** Recent laps, coloured like a timing screen; with ✕ to delete a lap while the game is paused. */
+function drawSectors(withDelete: boolean): void {
+  deleteButtons = [];
+  const y0 = MAIN_H + S(4);
+  fillRect(PAD, MAIN_H, W - PAD * 2, 1, WHITE, 0.15);
+  const px = S(13);
+  if (!sectorData || (sectorData.laps.length === 0 && !sectorData.current)) {
+    drawText("setores: aguardando a primeira volta cronometrada", PAD, y0 + S(2), S(12), GREY, false);
+    return;
+  }
+  const xLap = PAD + S(46), lapW = S(80), gap = S(4);
+  const xSec = xLap + lapW + S(8), secW = S(66);
+  const cell = (x: number, y: number, w: number, text: string, color: SectorColor | null) => {
+    const style = color ? SECTOR_FILL[color] : null;
+    if (style) fillRect(x, y, w, ROW_H - S(3), style.fill, style.alpha);
+    else fillRect(x, y, w, ROW_H - S(3), WHITE, 0.06);
+    const tw = textWidth(text, px);
+    drawText(text, x + Math.round((w - tw) / 2), y + S(1), px, style?.text ?? GREY);
+  };
+  let row = 0;
+  const current = sectorData.current;
+  if (current) {
+    const y = y0 + row * ROW_H;
+    drawText(`V${current.lapNumber}`, PAD, y + S(1), px, WHITE);
+    cell(xLap, y, lapW, "em curso", null);
+    current.sectorsMs.forEach((s, i) => cell(xSec + i * (secW + gap), y, secW, s === null ? "—" : (s / 1000).toFixed(3), current.colors[i] ?? null));
+    row++;
+  }
+  for (const lap of sectorData.laps.slice(0, SECTOR_ROWS)) {
+    const y = y0 + row * ROW_H;
+    drawText(`V${lap.lapNumber}`, PAD, y + S(1), px, GREY);
+    cell(xLap, y, lapW, `${lap.suspect ? "⚠ " : ""}${formatLapMs(lap.lapMs)}`, lap.lapColor);
+    lap.sectorsMs.forEach((s, i) => cell(xSec + i * (secW + gap), y, secW, (s / 1000).toFixed(3), lap.colors[i] ?? "yellow"));
+    if (withDelete) {
+      const bx = xSec + lap.sectorsMs.length * (secW + gap) + S(4);
+      const bw = S(22);
+      fillRect(bx, y, bw, ROW_H - S(3), RED, 0.35);
+      drawText("✕", bx + Math.round((bw - textWidth("✕", px)) / 2), y + S(1), px, WHITE);
+      deleteButtons.push({ x: bx, y, w: bw, h: ROW_H - S(3), id: lap.id });
+    }
+    row++;
+  }
+}
+
 /** Brake markers like the boards: 5 m steps under 50 m, 10 m above. */
 function roundMarker(m: number): number {
   const step = m < 50 ? 5 : 10;
@@ -508,13 +614,17 @@ function render(nowMs: number, live: Live | null): void {
     // Menus / pause / replay: show the frame so it can be dragged into place.
     setEditable(true);
     roundedPanel(0.7, YELLOW);
-    drawText("Bento Racing · arraste para posicionar", PAD + S(4), Math.round(H / 2) - S(16), S(15), WHITE);
-    drawText("acelerador · freio · volante — seu (linha) x ideal (tracejado)", PAD + S(4), Math.round(H / 2) + S(6), S(12), GREY, false);
+    drawText("Bento Racing · arraste para posicionar", PAD + S(4), Math.round(MAIN_H / 2) - S(16), S(15), WHITE);
+    drawText("acelerador · freio · volante — seu (linha) x ideal (tracejado)", PAD + S(4), Math.round(MAIN_H / 2) + S(6), S(12), GREY, false);
+    drawText("✕ apaga uma volta com tempo bugado", PAD + S(4), Math.round(MAIN_H / 2) + S(26), S(12), GREY, false);
+    drawSectors(true);
     present();
     return;
   }
   setEditable(false);
+  deleteButtons = [];
   roundedPanel(0.62, null);
+  drawSectors(false);
   drawStrip(live);
   for (const v of [0.25, 0.5, 0.75]) fillRect(GRAPH_X0, Math.round(pedalY(v)), GRAPH_X1 - GRAPH_X0, 1, WHITE, 0.08);
   fillRect(GRAPH_X0, Math.round(steerY(0)), GRAPH_X1 - GRAPH_X0, 1, WHITE, 0.12);
@@ -578,6 +688,15 @@ const PREVIEW_IDEAL: Ideal = {
 
 function previewLive(nowMs: number): Live {
   ideal ??= PREVIEW_IDEAL;
+  sectorData ??= {
+    current: { lapNumber: 9, sectorsMs: [35120, null, null], colors: ["green", null, null] },
+    laps: [
+      { id: "p8", lapNumber: 8, lapMs: 107210, sectorsMs: [34980, 37100, 35130], colors: ["purple", "yellow", "green"], lapColor: "green", suspect: false },
+      { id: "p7", lapNumber: 7, lapMs: 61000, sectorsMs: [9000, 30000, 22000], colors: ["suspect", "suspect", "suspect"], lapColor: "suspect", suspect: true },
+      { id: "p6", lapNumber: 6, lapMs: 106950, sectorsMs: [35200, 36800, 34950], colors: ["yellow", "purple", "purple"], lapColor: "purple", suspect: false },
+      { id: "p5", lapNumber: 5, lapMs: 108400, sectorsMs: [35400, 37600, 35400], colors: ["invalid", "invalid", "invalid"], lapColor: "invalid", suspect: false },
+    ],
+  };
   const t = nowMs / 1000;
   const phase = (t % 6) / 6;
   const braking = phase > 0.55 && phase < 0.7;
@@ -615,6 +734,10 @@ setInterval(() => {
 }, 1000 / FPS);
 setInterval(() => void pollIdeal(), 3000);
 void pollIdeal();
+if (!PREVIEW) {
+  setInterval(() => void pollSectors(), 1000);
+  void pollSectors();
+}
 
 const shutdown = () => {
   U.DestroyWindow(hwnd);

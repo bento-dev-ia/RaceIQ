@@ -19,6 +19,7 @@ import {
 import { m } from "@/paraglide/messages";
 import { authenticatedFetch } from "@/lib/rpc";
 import { RaceEngineerOverlayButton } from "@/components/RaceEngineerOverlayButton";
+import { RaceEngineerSectorHistory } from "./RaceEngineerSectorHistory";
 
 const SAMPLE_CALLOUT = "La Source, segunda, freia nos 100 metros. Solta o freio devagar até o ápice.";
 
@@ -227,6 +228,8 @@ export function RaceEngineerSettings() {
           {m.race_engineer_test()}
         </Button>
       </div>
+
+      <RaceEngineerSectorHistory />
     </section>
   );
 }

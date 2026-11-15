@@ -1,8 +1,11 @@
 /**
- * Speaks race-engineer callouts with the browser's speech synthesis
- * (Windows/Edge ship natural pt-BR voices: Francisca, Antonio, Thalita…).
- * A new callout always replaces the one being spoken — stale advice is worse
- * than none.
+ * Speaks race-engineer callouts. Preferred: audio the server generated ahead
+ * of time with the same voice picked here (Edge neural "Francisca", or
+ * ElevenLabs) — it starts instantly. Fallback: the browser's own speech
+ * synthesis, when the server has no voice or the clip isn't ready in time.
+ *
+ * A callout never cuts the one being spoken: it waits its turn, and is
+ * dropped if it waited so long that it would be stale.
  */
 
 const LISTEN_KEY = "raceiq.raceEngineer.listenHere";
@@ -149,13 +152,20 @@ const decoded = new Map<string, Promise<AudioBuffer | null>>();
 let currentSource: AudioBufferSourceNode | null = null;
 let speakToken = 0;
 
-/** Whether the server has a natural voice configured (re-checked every 30 s). */
+/**
+ * Whether the server can speak (ElevenLabs key, or Edge neural voices), re-checked
+ * every 30 s. Also tells the server which browser voice is picked here, so its
+ * clips use the same voice.
+ */
 async function premiumReady(): Promise<boolean> {
   if (premium !== null && Date.now() - premiumCheckedAt < 30_000) return premium;
   premiumCheckedAt = Date.now();
   try {
-    const res = await fetch("/api/race-engineer/voice", { credentials: "include" });
-    premium = res.ok && ((await res.json()) as { premium?: boolean }).premium === true;
+    const voice = pickVoice();
+    const query = voice ? `?browserVoice=${encodeURIComponent(voice.name)}&lang=${encodeURIComponent(voice.lang)}` : "";
+    const res = await fetch(`/api/race-engineer/voice${query}`, { credentials: "include" });
+    const body = res.ok ? ((await res.json()) as { premium?: boolean; edge?: boolean }) : {};
+    premium = body.premium === true || body.edge === true;
   } catch {
     premium = false;
   }
@@ -174,12 +184,12 @@ function context(): AudioContext {
   return audio;
 }
 
-function loadSpeech(text: string): Promise<AudioBuffer | null> {
+function loadSpeech(text: string, cachedOnly = false): Promise<AudioBuffer | null> {
   let job = decoded.get(text);
   if (!job) {
     job = (async () => {
       try {
-        const res = await fetch(`/api/race-engineer/speech?text=${encodeURIComponent(text)}`, { credentials: "include" });
+        const res = await fetch(`/api/race-engineer/speech?text=${encodeURIComponent(text)}${cachedOnly ? "&cachedOnly=1" : ""}`, { credentials: "include" });
         if (!res.ok) return null;
         return await context().decodeAudioData(await res.arrayBuffer());
       } catch {
@@ -187,7 +197,7 @@ function loadSpeech(text: string): Promise<AudioBuffer | null> {
       }
     })();
     decoded.set(text, job);
-    if (decoded.size > 300) decoded.delete(decoded.keys().next().value as string);
+    if (decoded.size > 600) decoded.delete(decoded.keys().next().value as string);
     void job.then((buf) => {
       if (!buf) decoded.delete(text);
     });
@@ -199,7 +209,7 @@ function loadSpeech(text: string): Promise<AudioBuffer | null> {
  * Play through gain + compressor: the compressor keeps peaks from clipping
  * so the gain can go well past 100% and cut through engine noise.
  */
-function playBuffer(buffer: AudioBuffer, volume: number): void {
+function playBuffer(buffer: AudioBuffer, volume: number, onDone: () => void): void {
   const ctx = context();
   currentSource?.stop();
   const src = ctx.createBufferSource();
@@ -226,28 +236,61 @@ function playBuffer(buffer: AudioBuffer, volume: number): void {
       currentSource = null;
       radioCue(Math.min(1, volume), true);
     }
+    onDone();
   };
   currentSource = src;
   src.start();
 }
 
-/** Warm the decoded-audio cache for phrases likely to be said soon. */
-export function preloadRaceEngineer(texts: readonly string[]): void {
-  void premiumReady().then((ok) => {
-    if (ok) for (const t of texts) void loadSpeech(t);
-  });
+export function isRaceEngineerPreload(data: unknown): data is { type: "race-engineer-preload"; texts: string[] } {
+  return data !== null && typeof data === "object" && "type" in data && data.type === "race-engineer-preload"
+    && "texts" in data && Array.isArray(data.texts);
 }
 
-function speakWithBrowser(text: string, volume: number): void {
+let preloading = false;
+let preloadList: string[] = [];
+
+/**
+ * Keep the clips the coach can say next decoded in memory, so a callout
+ * starts the instant it arrives. Only clips the server already generated are
+ * fetched (it generates the rest in the background and resends the list), a
+ * couple at a time so the live session is never disturbed.
+ */
+export function preloadRaceEngineer(texts: readonly string[]): void {
+  if (!getListenHere()) return;
+  preloadList = texts.filter((t) => typeof t === "string" && t.length > 0 && t.length <= 400 && !decoded.has(t));
+  if (preloading) return;
+  void (async () => {
+    if (!(await premiumReady())) return;
+    preloading = true;
+    try {
+      while (preloadList.length > 0) {
+        const batch = preloadList.splice(0, 2);
+        await Promise.all(batch.map((t) => loadSpeech(t, true)));
+      }
+    } finally {
+      preloading = false;
+    }
+  })();
+}
+
+function speakWithBrowser(text: string, volume: number, onDone: () => void): void {
   const s = synth();
-  if (!s) return;
+  if (!s) {
+    onDone();
+    return;
+  }
   const voice = pickVoice();
   const utterance = new SpeechSynthesisUtterance(text);
   utterance.lang = LANG;
   utterance.rate = speechRate(voice);
   utterance.volume = Math.min(1, volume);
   if (voice) utterance.voice = voice;
-  utterance.onend = () => radioCue(Math.min(1, volume), true);
+  utterance.onend = () => {
+    radioCue(Math.min(1, volume), true);
+    onDone();
+  };
+  utterance.onerror = () => onDone();
   s.cancel();
   if (pendingSpeak) clearTimeout(pendingSpeak);
   const delay = radioCue(Math.min(1, volume), false);
@@ -257,26 +300,74 @@ function speakWithBrowser(text: string, volume: number): void {
   }, delay);
 }
 
-export function speakRaceEngineer(text: string, force = false): void {
-  if (!force && !getListenHere()) return;
+/** How long a server clip may take to arrive before the browser voice says it instead. */
+const SERVER_CLIP_WAIT_MS = 400;
+/** A queued callout older than this is stale (the corner it was about is gone). */
+const QUEUE_MAX_AGE_MS = 2500;
+
+interface Queued { text: string; at: number; token: number }
+const queue: Queued[] = [];
+let busy = false;
+
+function next(): void {
+  busy = false;
+  while (queue.length > 0) {
+    const item = queue.shift()!;
+    if (performance.now() - item.at <= QUEUE_MAX_AGE_MS) {
+      say(item);
+      return;
+    }
+  }
+}
+
+function say(item: Queued): void {
+  busy = true;
   const volume = getEngineerVolume();
-  const token = ++speakToken;
-  synth()?.cancel();
-  if (pendingSpeak) clearTimeout(pendingSpeak);
+  let finished = false;
+  const done = () => {
+    if (finished || item.token !== speakToken) return;
+    finished = true;
+    next();
+  };
   void (async () => {
     if (await premiumReady()) {
       const startedAt = performance.now();
-      const buffer = await loadSpeech(text);
-      if (token !== speakToken) return; // a newer callout replaced this one
+      const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), SERVER_CLIP_WAIT_MS));
+      const buffer = await Promise.race([loadSpeech(item.text), timeout]);
+      if (item.token !== speakToken) return;
       if (buffer) {
         // pips first, then the voice (the pips overlap any fetch time already spent)
         const wait = Math.max(0, radioCue(Math.min(1, volume), false) - (performance.now() - startedAt));
         setTimeout(() => {
-          if (token === speakToken) playBuffer(buffer, volume);
+          if (item.token !== speakToken) return;
+          playBuffer(buffer, volume, done);
         }, wait);
         return;
       }
+      // Not ready in time: the browser says it now; the clip keeps loading for next time.
     }
-    if (token === speakToken) speakWithBrowser(text, volume);
+    if (item.token === speakToken) speakWithBrowser(item.text, volume, done);
   })();
+  // Safety net: never stay "busy" forever if an end event is lost.
+  setTimeout(done, 15_000);
+}
+
+/**
+ * Queue a callout. `force` (the settings "test" button) interrupts whatever
+ * is playing and clears the queue.
+ */
+export function speakRaceEngineer(text: string, force = false): void {
+  if (!force && !getListenHere()) return;
+  if (force) {
+    speakToken++;
+    queue.length = 0;
+    synth()?.cancel();
+    if (pendingSpeak) clearTimeout(pendingSpeak);
+    currentSource?.stop();
+    currentSource = null;
+    busy = false;
+  }
+  const item: Queued = { text, at: performance.now(), token: speakToken };
+  if (busy) queue.push(item);
+  else say(item);
 }
