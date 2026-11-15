@@ -11,6 +11,7 @@ import { udpListener } from "../runtime/udp-listener";
 import { wsManager } from "@raceiq/backend-core/runtime/websocket-manager";
 import { lapDetector } from "@raceiq/backend-core/telemetry/live-pipeline";
 import { loadSettings, saveSettings, PartialSettingsSchema } from "@raceiq/backend-core/runtime/config/settings";
+import { applyRaceEngineerSettings } from "../race-engineer/service";
 import { setRecordingFrequencyHz } from "@raceiq/backend-core/runtime/config/recording-frequency";
 import { isRecordingRetentionPolicyValid } from "@raceiq/shared/platform/runtime/recording-frequency";
 import { getSecret, setSecret } from "@raceiq/backend-core/runtime/platform/keystore";
@@ -358,6 +359,7 @@ export const settingsRoutes = new Hono()
       }
       saveSettings(merged);
       setRecordingFrequencyHz(merged.recordingFrequencyHz);
+      applyRaceEngineerSettings(merged);
       if (provided.onboardingComplete) {
         wsManager.broadcastNotification({ type: "onboarding_complete" });
       }

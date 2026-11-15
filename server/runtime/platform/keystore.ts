@@ -1,45 +1,67 @@
 /**
- * Secure credential store — uses the OS keychain:
+ * Secure credential store:
  *   macOS:   Keychain via `security` CLI
- *   Windows: Credential Manager via PowerShell
+ *   Windows: DPAPI (CryptProtectData, in-process) → %APPDATA%/RaceIQ/secrets.dpapi.json
+ *
+ * Fork note: upstream read the Windows credential vault through a hidden
+ * shell script that wrote the secret to the temp folder. Antivirus behaviour
+ * engines treat that as a password stealer and quarantined RaceIQ. DPAPI
+ * encrypts per Windows user with no child process and no plaintext on disk.
  */
-import { existsSync, readFileSync, unlinkSync } from "node:fs";
-import { resolve, dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-import { tmpdir } from "node:os";
-import { randomUUID } from "node:crypto";
-import { IS_COMPILED } from "../config/paths";
-import { IS_DARWIN, IS_WINDOWS, runPowerShellScript } from "./shell";
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { IS_COMPILED, USER_DATA_DIR } from "../config/paths";
+import { IS_DARWIN, IS_WINDOWS } from "./shell";
 import { createMacKeychain } from "./mac-keychain";
+import { dpapiProtect, dpapiUnprotect, isDpapiAvailable } from "./win32-native";
 
-const SERVICE = "RaceIQ";
+// ── Windows (DPAPI file store) ───────────────────────────────
 
-// ── Windows helpers ──────────────────────────────────────────
-
-const SCRIPT_PATH = IS_COMPILED
-  ? resolve(dirname(process.execPath), "credstore.ps1")
-  : resolve(dirname(fileURLToPath(import.meta.url)), "credstore.ps1");
-
-/**
- * True when the Windows credential store is usable. On non-Windows (and in
- * stripped-down dist layouts where credstore.ps1 wasn't packaged) there is no
- * point shelling out to PowerShell — bail out instead of retrying and spamming
- * warnings on every settings read.
- */
-const WIN_STORE_AVAILABLE = IS_WINDOWS && existsSync(SCRIPT_PATH);
-
+const SECRETS_FILE = "secrets.dpapi.json";
+let windowsSecrets: Map<string, string> | null = null;
 let warnedUnavailable = false;
+
 function warnUnavailableOnce(): void {
   if (warnedUnavailable) return;
   warnedUnavailable = true;
-  console.warn(
-    `[Keystore] Credential store unavailable (platform=${process.platform}, script=${SCRIPT_PATH} ${existsSync(SCRIPT_PATH) ? "present" : "missing"}). Secrets will not be persisted.`,
-  );
+  console.warn(`[Keystore] Secure store unavailable (platform=${process.platform}). Secrets will not be persisted.`);
 }
 
-function ps(args: string[]): string {
-  return runPowerShellScript(SCRIPT_PATH, args);
+function secretsPath(): string {
+  return join(USER_DATA_DIR, SECRETS_FILE);
 }
+
+function loadWindowsSecrets(): Map<string, string> {
+  if (windowsSecrets) return windowsSecrets;
+  windowsSecrets = new Map();
+  const path = secretsPath();
+  if (!existsSync(path)) return windowsSecrets;
+  try {
+    const stored = JSON.parse(readFileSync(path, "utf8")) as Record<string, string>;
+    for (const [key, cipher] of Object.entries(stored)) {
+      try {
+        windowsSecrets.set(key, dpapiUnprotect(Buffer.from(cipher, "base64")).toString("utf8"));
+      } catch {
+        console.warn(`[Keystore] Could not decrypt ${key} (different Windows user?); ignoring it.`);
+      }
+    }
+  } catch (error) {
+    console.warn("[Keystore] Could not read secret store:", error instanceof Error ? error.message : String(error));
+  }
+  return windowsSecrets;
+}
+
+function saveWindowsSecrets(secrets: Map<string, string>): void {
+  const out: Record<string, string> = {};
+  for (const [key, value] of secrets) out[key] = dpapiProtect(Buffer.from(value, "utf8")).toString("base64");
+  mkdirSync(USER_DATA_DIR, { recursive: true });
+  const path = secretsPath();
+  const tmp = `${path}.tmp`;
+  writeFileSync(tmp, JSON.stringify(out, null, 2));
+  renameSync(tmp, path);
+}
+
+const WIN_STORE_AVAILABLE = IS_WINDOWS && isDpapiAvailable();
 
 // ── macOS helpers ────────────────────────────────────────────
 
@@ -52,11 +74,6 @@ const macKeychain = createMacKeychain();
 // never written to disk and compiled builds keep the warn-and-drop behavior.
 const devMemoryStore = IS_COMPILED ? null : new Map<string, string>();
 
-// Reading Windows Credential Manager spawns PowerShell synchronously (hundreds
-// of ms each) and blocks the server. Secrets only change through setSecret, so
-// cache every read, including "not set", for the life of the process.
-const windowsSecretCache = new Map<string, string>();
-
 // ── Public API ───────────────────────────────────────────────
 
 export async function getSecret(key: string): Promise<string> {
@@ -68,25 +85,7 @@ export async function getSecret(key: string): Promise<string> {
     warnUnavailableOnce();
     return "";
   }
-  const cached = windowsSecretCache.get(key);
-  if (cached !== undefined) return cached;
-  for (let attempt = 1; attempt <= 3; attempt++) {
-    try {
-      const tmpFile = join(tmpdir(), `raceiq-cred-${process.pid}-${key}-${randomUUID()}`);
-      ps(["read", `${SERVICE}:${key}`, "", tmpFile]);
-      const value = readFileSync(tmpFile, "utf-8");
-      try { unlinkSync(tmpFile); } catch { /* ignore */ }
-      windowsSecretCache.set(key, value);
-      return value;
-    } catch (err) {
-      if (attempt === 3) {
-        console.warn(`[Keystore] Failed to read ${key}:`, err instanceof Error ? err.message : String(err));
-        return "";
-      }
-      await new Promise((resolve) => setTimeout(resolve, 30));
-    }
-  }
-  return "";
+  return loadWindowsSecrets().get(key) ?? "";
 }
 
 export async function setSecret(key: string, value: string): Promise<void> {
@@ -107,11 +106,8 @@ export async function setSecret(key: string, value: string): Promise<void> {
     warnUnavailableOnce();
     return;
   }
-  windowsSecretCache.delete(key);
-  if (!value) {
-    ps(["delete", `${SERVICE}:${key}`]);
-  } else {
-    ps(["write", `${SERVICE}:${key}`, value]);
-  }
-  windowsSecretCache.set(key, value);
+  const secrets = loadWindowsSecrets();
+  if (value) secrets.set(key, value);
+  else secrets.delete(key);
+  saveWindowsSecrets(secrets);
 }

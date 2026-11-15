@@ -23,6 +23,7 @@ import { Route as LmuRouteImport } from './routes/lmu'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as OverlayRouteImport } from './routes/overlay'
+import { Route as TrailBrakingRouteImport } from './routes/trail-braking'
 import { Route as GameidCarsRouteImport } from './routes/$gameid/cars'
 import { Route as GameidChatsRouteImport } from './routes/$gameid/chats'
 import { Route as GameidCompareRouteImport } from './routes/$gameid/compare'
@@ -142,6 +143,11 @@ const OnboardingRoute = OnboardingRouteImport.update({
 const OverlayRoute = OverlayRouteImport.update({
   id: '/overlay',
   path: '/overlay',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TrailBrakingRoute = TrailBrakingRouteImport.update({
+  id: '/trail-braking',
+  path: '/trail-braking',
   getParentRoute: () => rootRouteImport,
 } as any)
 const GameidCarsRoute = GameidCarsRouteImport.update({
@@ -415,6 +421,7 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/onboarding': typeof OnboardingRoute
   '/overlay': typeof OverlayRoute
+  '/trail-braking': typeof TrailBrakingRoute
   '/$gameid/cars': typeof GameidCarsRoute
   '/$gameid/chats': typeof GameidChatsRoute
   '/$gameid/compare': typeof GameidCompareRoute
@@ -473,6 +480,7 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/onboarding': typeof OnboardingRoute
   '/overlay': typeof OverlayRoute
+  '/trail-braking': typeof TrailBrakingRoute
   '/$gameid/cars': typeof GameidCarsRoute
   '/$gameid/chats': typeof GameidChatsRoute
   '/$gameid/compare': typeof GameidCompareRoute
@@ -532,6 +540,7 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/onboarding': typeof OnboardingRoute
   '/overlay': typeof OverlayRoute
+  '/trail-braking': typeof TrailBrakingRoute
   '/$gameid/cars': typeof GameidCarsRoute
   '/$gameid/chats': typeof GameidChatsRoute
   '/$gameid/compare': typeof GameidCompareRoute
@@ -600,6 +609,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/onboarding'
     | '/overlay'
+    | '/trail-braking'
     | '/$gameid/cars'
     | '/$gameid/chats'
     | '/$gameid/compare'
@@ -658,6 +668,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/onboarding'
     | '/overlay'
+    | '/trail-braking'
     | '/$gameid/cars'
     | '/$gameid/chats'
     | '/$gameid/compare'
@@ -716,6 +727,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/onboarding'
     | '/overlay'
+    | '/trail-braking'
     | '/$gameid/cars'
     | '/$gameid/chats'
     | '/$gameid/compare'
@@ -783,6 +795,7 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   OnboardingRoute: typeof OnboardingRoute
   OverlayRoute: typeof OverlayRoute
+  TrailBrakingRoute: typeof TrailBrakingRoute
   PortableCombo1Route: typeof PortableCombo1Route
   PortableCombo2Route: typeof PortableCombo2Route
   PortableIndexRoute: typeof PortableIndexRoute
@@ -886,6 +899,13 @@ declare module '@tanstack/react-router' {
       path: '/overlay'
       fullPath: '/overlay'
       preLoaderRoute: typeof OverlayRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/trail-braking': {
+      id: '/trail-braking'
+      path: '/trail-braking'
+      fullPath: '/trail-braking'
+      preLoaderRoute: typeof TrailBrakingRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/$gameid/cars': {
@@ -1505,6 +1525,7 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   OnboardingRoute: OnboardingRoute,
   OverlayRoute: OverlayRoute,
+  TrailBrakingRoute: TrailBrakingRoute,
   PortableCombo1Route: PortableCombo1Route,
   PortableCombo2Route: PortableCombo2Route,
   PortableIndexRoute: PortableIndexRoute,

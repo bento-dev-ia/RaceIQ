@@ -21,9 +21,10 @@ import { setDumpOnlyTelemetryRouting } from "@raceiq/backend-core/telemetry/live
 import { udpListener } from "./udp-listener";
 import { PUBLIC_DIR, IS_COMPILED } from "@raceiq/backend-core/runtime/config/paths";
 import { getOnboardingOverride } from "@raceiq/backend-core/runtime/options";
-import { openFirstRunDashboard, preventMacSleep } from "@raceiq/backend-core/runtime/desktop";
-import { clearHttpPort, startHttpServer } from "./http-server";
+import { openDashboard, openFirstRunDashboard, preventMacSleep } from "@raceiq/backend-core/runtime/desktop";
+import { probeHttpPort, startHttpServer } from "./http-server";
 import { startNativeSourceSupervisor, type NativeSourceSupervisor } from "./native-sources";
+import { startRaceEngineer } from "../race-engineer/service";
 import { installShutdown } from "./shutdown";
 import { startStartupWorker, type StartupWorkerHandle } from "./startup-worker";
 import { startMaintenanceJobs, startSyncAndStaleSessionJobs } from "./startup-jobs";
@@ -109,10 +110,19 @@ export async function bootServer(options: BootOptions = {}): Promise<RunningServ
   // Empty-session cleanup runs after repair so pending candidates remain available.
 
   console.log("[Server] Starting RaceIQ Server...");
-  // A native app may never kill another listener to claim a port.
+  // Never kill another listener to claim the port (see probeHttpPort).
+  const openDashboardRequested = process.argv.includes("--open-dashboard");
   if (!desktop && httpPort !== 0) {
-    clearHttpPort(httpPort);
-    console.log("[Boot] Port cleared");
+    const listener = await probeHttpPort(httpPort);
+    if (listener === "raceiq") {
+      console.log(`[Boot] RaceIQ is already running on port ${httpPort}`);
+      if (openDashboardRequested) openDashboard(httpPort);
+      process.exit(0);
+    }
+    if (listener === "other") {
+      console.error(`[Boot] Port ${httpPort} is in use by another program (or an unresponsive RaceIQ). Close it or change the port; RaceIQ will not terminate it.`);
+      process.exit(1);
+    }
   }
 
   // Dynamic import is required here: dev-studio pulls @mastra/hono and the
@@ -178,6 +188,7 @@ export async function bootServer(options: BootOptions = {}): Promise<RunningServ
 
 
   nativeSources = startNativeSourceSupervisor(recordingGameId, dumpMode);
+  if (!dumpMode) startRaceEngineer(loadSettings());
   classificationWorker = dumpMode ? null : startClassificationMigrationWorker({ resetInterrupted: true });
   const trayCandidates = httpAccess.hosts
     .map((host) => host === "0.0.0.0" || host === "::" ? "localhost" : host)
@@ -187,7 +198,14 @@ export async function bootServer(options: BootOptions = {}): Promise<RunningServ
     ?? trayCandidates[0];
   if (!desktop) startTray(trayUrl);
 
-  if (firstRun && !desktop) {
+  if (IS_COMPILED && process.platform === "win32" && !desktop) {
+    process.title = "Bento Racing";
+    console.log(`\n  Bento Racing está rodando em http://localhost:${boundHttpPort}\n  Feche esta janela para encerrar o Bento Racing.\n`);
+  }
+
+  if (openDashboardRequested && !desktop) {
+    openDashboard(boundHttpPort);
+  } else if (firstRun && !desktop) {
     openFirstRunDashboard(boundHttpPort);
   }
 

@@ -1,13 +1,18 @@
 ; installer/raceiq.iss
 ; Compile with: iscc /DMyAppVersion=1.0.0 installer\raceiq.iss
+;
+; Fork hardening (bento-dev-ia/RaceIQ): no hidden PowerShell, no forced
+; start-with-Windows, no VBS launcher, no killing of unrelated processes.
+; These upstream behaviours are legitimate but match trojan heuristics.
 
 #ifndef MyAppVersion
   #define MyAppVersion "0.0.0"
 #endif
 
-#define MyAppName "RaceIQ"
-#define MyAppPublisher "SpeedHQ"
-#define MyAppURL "https://github.com/SpeedHQ/RaceIQ"
+#define MyAppName "Bento Racing"
+; Bento Racing is a fork of RaceIQ by SpeedHQ (AGPL-3.0); the original copyright and license are kept.
+#define MyAppPublisher "Bento Racing"
+#define MyAppURL "https://github.com/bento-dev-ia/RaceIQ"
 #define MyAppExeName "raceiq.exe"
 
 [Setup]
@@ -18,12 +23,13 @@ AppPublisher={#MyAppPublisher}
 AppPublisherURL={#MyAppURL}
 AppSupportURL={#MyAppURL}
 AppUpdatesURL={#MyAppURL}
-DefaultDirName={localappdata}\{#MyAppName}
+; Install folder stays "RaceIQ" so existing installs, data and settings carry over.
+DefaultDirName={localappdata}\RaceIQ
 DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
 OutputDir=..
-OutputBaseFilename=RaceIQ-Setup-v{#MyAppVersion}
+OutputBaseFilename=BentoRacing-Setup-v{#MyAppVersion}
 Compression=lzma
 SolidCompression=yes
 WizardStyle=modern
@@ -35,9 +41,17 @@ UninstallDisplayName={#MyAppName}
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
+Name: "brazilianportuguese"; MessagesFile: "compiler:Languages\BrazilianPortuguese.isl"
+
+[CustomMessages]
+english.StartWithWindows=Start Bento Racing when Windows starts
+brazilianportuguese.StartWithWindows=Iniciar o Bento Racing com o Windows
+english.StopRaceIQ=Stop Bento Racing
+brazilianportuguese.StopRaceIQ=Encerrar Bento Racing
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
+Name: "startup"; Description: "{cm:StartWithWindows}"; Flags: unchecked
 
 [Code]
 const
@@ -63,11 +77,8 @@ begin
   if UninstallString <> '' then
   begin
     Log('Found old admin install, running uninstaller: ' + UninstallString);
-    // Run the old uninstaller silently
-    Exec('powershell.exe',
-      '-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -Command "Start-Process -FilePath ''' +
-      RemoveQuotes(UninstallString) + ''' -ArgumentList ''/VERYSILENT'',''/NORESTART'' -Verb RunAs -Wait"',
-      '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+    // Visible UAC prompt instead of a hidden PowerShell with -ExecutionPolicy Bypass.
+    ShellExec('runas', RemoveQuotes(UninstallString), '/VERYSILENT /NORESTART', '', SW_SHOWNORMAL, ewWaitUntilTerminated, ResultCode);
     Log('Old uninstaller finished with code: ' + IntToStr(ResultCode));
   end;
 end;
@@ -83,9 +94,9 @@ function PrepareToInstall(var NeedsRestart: Boolean): String;
 var
   ResultCode: Integer;
 begin
-  UpdatePrepareStatus('Closing RaceIQ...');
-  Exec('taskkill', '/F /IM raceiq.exe', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
-  Exec('powershell.exe', '-NoProfile -Command "Get-NetTCPConnection -LocalPort 3117 -State Listen -EA 0 | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -EA 0 }"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  UpdatePrepareStatus('Closing Bento Racing...');
+  // Only RaceIQ itself is closed; other programs on port 3117 are never touched.
+  Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM raceiq.exe', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
 
   if GetOldUninstallString() <> '' then
   begin
@@ -102,30 +113,33 @@ Source: "..\dist\public\*"; DestDir: "{app}\public"; Flags: ignoreversion recurs
 Source: "..\dist\data\*"; DestDir: "{app}\data"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "..\dist\node_modules\@libsql\win32-x64-msvc\*"; DestDir: "{app}\node_modules\@libsql\win32-x64-msvc"; Flags: ignoreversion
 Source: "..\dist\node_modules\@duckdb\node-bindings-win32-x64\*"; DestDir: "{app}\node_modules\@duckdb\node-bindings-win32-x64"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "..\dist\credstore.ps1"; DestDir: "{app}"; Flags: ignoreversion
-Source: "raceiq-launcher.vbs"; DestDir: "{app}"; Flags: ignoreversion
 
 [InstallDelete]
 ; Public contains only packaged assets; replace it completely on every install/upgrade.
 ; User data lives under data and is intentionally preserved.
 Type: filesandordirs; Name: "{app}\public\*"
+; Upstream hidden-window VBS launcher and PowerShell credential helper are no longer used.
+Type: files; Name: "{app}\raceiq-launcher.vbs"
+Type: files; Name: "{app}\credstore.ps1"
 
 [Registry]
-; Create startup entry on install (enabled by default)
-Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "RaceIQ"; ValueData: """{app}\raceiq.exe"""; Flags: uninsdeletevalue
-Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run"; ValueType: binary; ValueName: "RaceIQ"; ValueData: 03 00 00 00 00 00 00 00 00 00 00 00; Flags: uninsdeletevalue
+; Start with Windows only when the user ticks it; otherwise remove any entry an
+; earlier install created.
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "RaceIQ"; ValueData: """{app}\raceiq.exe"""; Flags: uninsdeletevalue; Tasks: startup
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueName: "RaceIQ"; Flags: deletevalue; Check: not WizardIsTaskSelected('startup')
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run"; ValueName: "RaceIQ"; Flags: deletevalue uninsdeletevalue
 
 [Icons]
-Name: "{userprograms}\{#MyAppName}"; Filename: "wscript.exe"; Parameters: """{app}\raceiq-launcher.vbs"""; WorkingDir: "{app}"; IconFilename: "{app}\{#MyAppExeName}"
+Name: "{userprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Parameters: "--open-dashboard"; WorkingDir: "{app}"
+Name: "{userprograms}\{cm:StopRaceIQ}"; Filename: "{sys}\taskkill.exe"; Parameters: "/F /IM raceiq.exe"; IconFilename: "{app}\{#MyAppExeName}"
 Name: "{userprograms}\{cm:UninstallProgram,{#MyAppName}}"; Filename: "{uninstallexe}"
-Name: "{userdesktop}\{#MyAppName}"; Filename: "wscript.exe"; Parameters: """{app}\raceiq-launcher.vbs"""; WorkingDir: "{app}"; IconFilename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
+Name: "{userdesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Parameters: "--open-dashboard"; WorkingDir: "{app}"; Tasks: desktopicon
 
 [Run]
-Filename: "wscript.exe"; Parameters: """{app}\raceiq-launcher.vbs"""; WorkingDir: "{app}"; Description: "{cm:LaunchProgram,{#MyAppName}}"; Flags: nowait postinstall runasoriginaluser
-Filename: "wscript.exe"; Parameters: """{app}\raceiq-launcher.vbs"""; WorkingDir: "{app}"; Flags: nowait skipifnotsilent runasoriginaluser
+; Exactly one launch: the checkbox page in interactive installs, automatic in silent ones.
+Filename: "{app}\{#MyAppExeName}"; Parameters: "--open-dashboard"; WorkingDir: "{app}"; Description: "{cm:LaunchProgram,{#MyAppName}}"; Flags: nowait postinstall skipifsilent runasoriginaluser
+Filename: "{app}\{#MyAppExeName}"; Parameters: "--open-dashboard"; WorkingDir: "{app}"; Flags: nowait skipifnotsilent runasoriginaluser
 
 [UninstallRun]
-Filename: "taskkill"; Parameters: "/F /IM raceiq.exe"; Flags: runhidden; RunOnceId: "KillRaceIQ"
-Filename: "powershell.exe"; Parameters: "-NoProfile -Command ""Get-NetTCPConnection -LocalPort 3117 -State Listen -EA 0 | ForEach-Object {{ Stop-Process -Id $_.OwningProcess -Force -EA 0 }}"""; Flags: runhidden; RunOnceId: "KillPort3117"
-Filename: "cmdkey"; Parameters: "/delete:RaceIQ:gemini-api-key"; Flags: runhidden; RunOnceId: "DeleteApiKey"
-Filename: "powershell.exe"; Parameters: "-NoProfile -Command ""Remove-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name 'RaceIQ' -ErrorAction SilentlyContinue; Remove-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run' -Name 'RaceIQ' -ErrorAction SilentlyContinue"""; Flags: runhidden; RunOnceId: "RemoveStartup"
+Filename: "{sys}\taskkill.exe"; Parameters: "/F /IM raceiq.exe"; Flags: runhidden; RunOnceId: "KillRaceIQ"
+Filename: "{sys}\cmdkey.exe"; Parameters: "/delete:RaceIQ:gemini-api-key"; Flags: runhidden; RunOnceId: "DeleteApiKey"

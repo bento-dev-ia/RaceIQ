@@ -8,9 +8,12 @@ import {
   Code2,
   FlaskConical,
   Gamepad2,
+  Gauge,
   History,
   GitCompareArrows,
+  Headset,
   House,
+  Layers,
   LayoutDashboard,
   type LucideIcon,
   Map as MapIcon,
@@ -31,6 +34,8 @@ import { m } from "@/paraglide/messages";
 import { type GameRouteFeature, supportsGameFeature } from "../lib/game-routes";
 import { isGameContextPath, replaceGameRoutePrefix } from "../lib/sidebar-navigation";
 import { ConnectionStatus } from "./ConnectionStatus";
+import { useRaceEngineerToggle } from "./RaceEngineerToggle";
+import { useRaceEngineerOverlay } from "./RaceEngineerOverlayButton";
 
 export interface AppSidebarProps {
   collapsed: boolean;
@@ -165,6 +170,8 @@ export function AppSidebar({
   const selectItems = useMemo(() => visibleGames.map((game) => ({ value: game.id, label: game.displayName })), [visibleGames]);
   const visibleFeatures = activeGame ? FEATURE_LINKS.filter((feature) => !feature.feature || supportsGameFeature(activeGame.routePrefix, feature.feature)) : [];
   const showCollapsed = !mobile && collapsed;
+  const raceEngineer = useRaceEngineerToggle();
+  const overlay = useRaceEngineerOverlay();
 
   useEffect(
     () => () => {
@@ -224,7 +231,7 @@ export function AppSidebar({
         } transition-[width] duration-200 motion-reduce:transition-none`}
       >
         <div className={`flex h-14 items-center border-b border-app-border ${showCollapsed ? "justify-center" : "justify-between px-3"}`}>
-          {!showCollapsed && <span className="text-sm font-semibold text-app-text">RaceIQ</span>}
+          {!showCollapsed && <span className="text-sm font-semibold text-app-text">Bento Racing</span>}
           {mobile ? (
             <Button variant="app-ghost" size="icon-sm" onClick={onClose} aria-label="Close navigation">
               <X className="size-4" />
@@ -322,11 +329,34 @@ export function AppSidebar({
 
         <div className="mt-auto border-t border-app-border py-2 pr-2 pl-0">
           <SidebarLink collapsed={showCollapsed} icon={Radio} label={m.tab_live()} to="/live" onClick={onClose} />
+          <SidebarLink collapsed={showCollapsed} icon={Gauge} label={m.nav_trail_braking()} to="/trail-braking" onClick={onClose} />
           {import.meta.env.DEV && <SidebarLink collapsed={showCollapsed} icon={Code2} label={m.nav_dev()} to="/dev" onClick={onClose} />}
           {updateAvailable && (
             <SidebarAction collapsed={showCollapsed} label={updateLabel} onClick={handleUpdate}>
               <RefreshCw className="size-4 text-app-accent" />
               <span className={showCollapsed ? "sr-only" : "truncate"}>{updateLabel}</span>
+            </SidebarAction>
+          )}
+          <SidebarAction
+            collapsed={showCollapsed}
+            label={`${raceEngineer.enabled ? m.race_engineer_toggle_off() : m.race_engineer_toggle_on()} (Ctrl+Shift+E)`}
+            onClick={raceEngineer.toggle}
+            className={raceEngineer.enabled ? "text-app-accent" : undefined}
+          >
+            <Headset className="size-4" />
+            <span className={showCollapsed ? "sr-only" : "truncate"}>
+              {m.race_engineer_short()} · {raceEngineer.enabled ? m.common_on() : m.common_off()}
+            </span>
+          </SidebarAction>
+          {overlay.status?.available && (
+            <SidebarAction
+              collapsed={showCollapsed}
+              label={overlay.status.running ? m.race_engineer_overlay_running() : m.race_engineer_overlay_open()}
+              onClick={() => void overlay.open()}
+              className={overlay.status.running ? "text-app-accent" : undefined}
+            >
+              <Layers className="size-4" />
+              <span className={showCollapsed ? "sr-only" : "truncate"}>{overlay.status.running ? m.race_engineer_overlay_running() : m.race_engineer_overlay_open()}</span>
             </SidebarAction>
           )}
           <SidebarAction collapsed={showCollapsed} label={m.nav_settings()} onClick={handleSettings}>

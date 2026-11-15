@@ -1,5 +1,6 @@
-import { exec } from "node:child_process";
+import { isMainThread } from "node:worker_threads";
 import type { ServerGameAdapter } from "./types";
+import { listProcessNames } from "../runtime/platform/win32-native";
 
 const adapters: ServerGameAdapter[] = [];
 const adapterMap = new Map<string, ServerGameAdapter>();
@@ -38,36 +39,34 @@ export function getAllServerGames(): readonly ServerGameAdapter[] {
 
 /**
  * Cached set of running process names (lowercase, no extension).
- * Refreshed asynchronously every 5s via a background timer so
- * callers never block the event loop waiting on `tasklist`.
+ *
+ * Fork note: upstream spawned a process-listing command every second, which
+ * antivirus behaviour engines read as a trojan surveilling the machine. A
+ * Toolhelp32 snapshot in-process gives the same names in ~1 ms with no child
+ * process. Only Windows has native sim games to detect; elsewhere the set
+ * stays empty (the old command never existed there either).
  */
 let _processNames: Set<string> = new Set();
-let _refreshing = false;
 
 function refreshProcessCache(): void {
-  if (_refreshing) return;
-  _refreshing = true;
-  exec(
-    'tasklist /FO CSV /NH',
-    { encoding: "utf-8", timeout: 3000, windowsHide: true },
-    (err, stdout) => {
-      _refreshing = false;
-      if (err || !stdout) return; // keep stale cache on error
-      _processNames = new Set(
-        stdout.split(/\r?\n/)
-          .map((line) => line.match(/^"([^"]+)"/)?.[1]?.replace(/\.exe$/i, "").toLowerCase())
-          .filter((n): n is string => !!n)
-      );
-    }
-  );
+  try {
+    const names = listProcessNames();
+    if (names) _processNames = names;
+  } catch {
+    // keep stale cache on error
+  }
 }
 
 // Seed immediately, then refresh every second to sync with status broadcast.
 // `.unref()` so this module can be imported by `bun test` without keeping the
 // test runner's event loop alive after the suite completes.
-refreshProcessCache();
-const _processCacheInterval = setInterval(refreshProcessCache, 1000);
-_processCacheInterval.unref?.();
+// Only the main thread detects games; workers that import this module for the
+// adapter registry must not each start their own process polling.
+if (isMainThread) {
+  refreshProcessCache();
+  const processCacheInterval = setInterval(refreshProcessCache, 1000);
+  processCacheInterval.unref?.();
+}
 
 /** Check if a specific game's process is running. */
 export function isGameRunning(gameId: string): boolean {

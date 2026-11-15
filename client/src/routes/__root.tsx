@@ -13,6 +13,7 @@ import { applyLocale } from "@/lib/locale";
 import { m } from "@/paraglide/messages";
 import { getLocale, isLocale } from "@/paraglide/runtime";
 import { AppSidebar } from "../components/AppSidebar";
+import { RaceEngineerHotkey } from "../components/RaceEngineerToggle";
 import { RaceResultStatus } from "../components/RaceResultStatus";
 import { ResponsiveWorkspace } from "../components/ResponsiveWorkspace";
 import { StaleLapReprocessing } from "../components/StaleLapReprocessing";
@@ -132,6 +133,7 @@ function AppShell() {
   if (isPortable) {
     return (
       <div className="h-screen bg-app-bg text-app-text">
+        <RaceEngineerHotkey />
         <ResponsiveWorkspace className="overflow-hidden">
           <Outlet key={uiLocale} />
         </ResponsiveWorkspace>
@@ -142,6 +144,7 @@ function AppShell() {
   return (
     <>
       <div className="@container/shell flex h-screen min-h-0 bg-app-bg text-app-text">
+        <RaceEngineerHotkey />
         <aside className="hidden h-full shrink-0 @3xl/shell:block">
           <AppSidebar
             collapsed={sidebarCollapsed}

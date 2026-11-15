@@ -56,7 +56,7 @@ export function WelcomeStep({ setup = false }: { setup?: boolean } = {}) {
             </defs>
           </svg>
         </div>
-      <h2 className="text-2xl font-bold text-app-text mb-1 tracking-tight">RaceIQ</h2>
+      <h2 className="text-2xl font-bold text-app-text mb-1 tracking-tight">Bento Racing</h2>
       {versionInfo?.current && <div className="text-xs font-mono text-app-text-muted mb-2">v{versionInfo.current}</div>}
       <p className="text-sm text-app-text-muted max-w-sm leading-relaxed">{m.ob_welcome_tagline()}</p>
       <div className="flex items-center gap-2 mt-5">

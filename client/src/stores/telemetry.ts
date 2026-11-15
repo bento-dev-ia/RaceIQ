@@ -12,6 +12,10 @@ export interface DisplaySettings {
   recordingDirectory: string | null;
   recordingFrequencyHz: RecordingFrequencyHz;
   recordLmuOpponents: boolean;
+  raceEngineerEnabled: boolean;
+  raceEngineerLearnFromBots: boolean;
+  raceEngineerOverlayScale: number;
+  raceEngineerVoiceId: string;
   unit: "metric" | "imperial";
   temperatureUnit: "C" | "F";
   aiProvider: "gemini" | "openai" | "anthropic" | "deepseek" | "openai-compatible";
@@ -70,6 +74,10 @@ export const DEFAULT_DISPLAY_SETTINGS: DisplaySettings = {
   recordingDirectory: null,
   recordingFrequencyHz: DEFAULT_RECORDING_FREQUENCY_HZ,
   recordLmuOpponents: true,
+  raceEngineerEnabled: false,
+  raceEngineerLearnFromBots: false,
+  raceEngineerOverlayScale: 1,
+  raceEngineerVoiceId: "",
   unit: "metric",
   temperatureUnit: "C",
   aiProvider: "gemini",

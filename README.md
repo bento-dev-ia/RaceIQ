@@ -4,11 +4,15 @@
   <img src="assets/raceiq-icon.png" alt="RaceIQ" width="200">
 </p>
 
-<h1 align="center">RaceIQ</h1>
+<h1 align="center">Bento Racing</h1>
 
 <p align="center">
   Sim racer's companion app, real-time racing telemetry dashboard, lap analysis and iterative experiments for car setup and driving</strong>.
 </p>
+
+> **Bento Racing** is a fork of [RaceIQ](https://github.com/SpeedHQ/RaceIQ) by SpeedHQ, distributed under the same
+> [GNU AGPL-3.0](LICENSE) license. It adds a Brazilian Portuguese voice race engineer, an in-game input overlay for
+> ACC and a trail-braking trainer. The original copyright notices are kept as the license requires.
 
 <p align="center">
   <a href="https://github.com/SpeedHQ/RaceIQ/releases/latest"><img src="https://img.shields.io/github/downloads/SpeedHQ/RaceIQ/total?style=for-the-badge&color=blue&label=downloads" alt="Downloads"></a>

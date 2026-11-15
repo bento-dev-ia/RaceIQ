@@ -56,6 +56,15 @@ const AppSettingsSchema = z.object({
   recordingDirectory: z.string().nullable().default(null),
   recordingFrequencyHz: z.union([z.literal(50), z.literal(60), z.literal(70), z.literal(80), z.literal(90), z.literal(100)]).default(DEFAULT_RECORDING_FREQUENCY_HZ),
   recordLmuOpponents: z.boolean().default(true),
+  // Voice race engineer (live pt-BR callouts). Off by default.
+  raceEngineerEnabled: z.boolean().default(false),
+  // ACC: also learn from the other cars on track (e.g. AI at 100%). Only their
+  // world positions are exposed, so this yields speed + brake-point estimates.
+  raceEngineerLearnFromBots: z.boolean().default(false),
+  // In-game input overlay (bun run overlay): size. Its position is dragged in-game and kept by the overlay.
+  raceEngineerOverlayScale: z.number().min(0.6).max(2).default(1),
+  // ElevenLabs voice for the engineer (the API key lives in the OS keystore). Empty = default voice.
+  raceEngineerVoiceId: z.string().max(40).regex(/^[A-Za-z0-9]*$/).default(""),
   sessionCleanupEnabled: z.boolean().default(false),
   sessionCleanupAgeDays: z.union([z.literal(30), z.literal(90), z.literal(180), z.literal(365)]).default(90),
   sessionDownsampleEnabled: z.boolean().default(false),

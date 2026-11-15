@@ -151,6 +151,7 @@
     "./runtime/platform/launch-on-login": "./runtime/platform/launch-on-login.ts",
     "./runtime/platform/shell": "./runtime/platform/shell.ts",
     "./runtime/platform/tray": "./runtime/platform/tray.ts",
+    "./runtime/platform/win32-native": "./runtime/platform/win32-native.ts",
     "./runtime/source-supervisor": "./runtime/source-supervisor.ts",
     "./runtime/update/check": "./runtime/update/check.ts",
     "./session-capture/relocate-recordings": "./session-capture/relocate-recordings.ts",
